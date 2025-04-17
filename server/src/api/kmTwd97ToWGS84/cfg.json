@@ -1,0 +1,7 @@
+{
+    "name":"/km/gis/wgs84ToTwd97",
+    "method": "get",
+    "auth": false,
+    "desc": "金門地區WGS84 轉 TWD97?lat=&lng=",
+    "index": "index.js"
+}
