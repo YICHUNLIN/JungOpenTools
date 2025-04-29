@@ -1,0 +1,7 @@
+{
+    "name":"/gis/twd97towgs84",
+    "method": "post",
+    "auth": false,
+    "desc": "金門地區TWD97 轉 WGS84 body.source: [{x,y}]",
+    "index": "index.js"
+}

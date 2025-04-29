@@ -9,9 +9,9 @@ const passport = require('passport');
  */
 module.exports = (context, app, mids) => {
     const routesRoot = path.basename(__dirname);
+    const contextRoute = routesRoot.split('.').join('/');
     const base = `${process.cwd()}/src`
     console.log(`=== Load '${routesRoot}' ===`);
-    let s = "";
     // // 動態載入模組
     fs.readdirSync(__dirname)
         .filter(file => (file.slice(-3) !== '.js'))
@@ -41,5 +41,5 @@ module.exports = (context, app, mids) => {
                 }
             }
         });
-    app.use(`/${routesRoot}`, mids, api);
+    app.use(`/${contextRoute}`, mids, api);
 }

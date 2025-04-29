@@ -1,0 +1,7 @@
+{
+    "name":"/line/pointOfLength",
+    "method": "post",
+    "auth": false,
+    "desc": "取得直線上距離起點L弧長的座標",
+    "index": "index.js"
+}
