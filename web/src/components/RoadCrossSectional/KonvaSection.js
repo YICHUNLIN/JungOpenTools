@@ -90,6 +90,9 @@ const Section = ({section, width, height, toolConfig}) => {
         }, 10000);
         setMainOffset({minX, maxY})
     }, [section])
+
+    if (section.layers.filter(l => l.type === "BASE").length > 1) return <p>{section.name} BASE層 只能有一個</p>
+    if (section.layers.filter(l => l.type === "LEVELING").length > 1) return <p>{section.name} LEVELING層 只能有一個</p>
     return <>
         <TextField 
             label="中心高,cm公分"
