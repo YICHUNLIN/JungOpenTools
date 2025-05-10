@@ -4,6 +4,7 @@
         "layers": [
             {
                 "name": "fineshed",
+                "type":"BASE",
                 "points": [
                     [-1.598, 7.991],
                     [-0.008, 8.029],
@@ -21,6 +22,7 @@
         "layers": [
             {
                 "name": "finished",
+                "type":"BASE",
                 "points": [
                     [-6.016, 10.982],
                     [-5.954, 10.992],
@@ -42,6 +44,7 @@
         "layers": [
             {
                 "name": "finished",
+                "type":"BASE",
                 "points": [
                     [-5.801,15.897],
                     [-5.781,15.912],
