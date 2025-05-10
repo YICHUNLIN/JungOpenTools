@@ -14,9 +14,4 @@ Obj.prototype.joinPre = function(pre){
 Obj.prototype.joineNext = function(next){
     this.next = next;
 }
-
-Obj.prototype.draw = function(ctx){
-
-}
-
 export default Obj

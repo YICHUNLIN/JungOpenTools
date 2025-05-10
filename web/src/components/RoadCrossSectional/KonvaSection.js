@@ -1,19 +1,41 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Arc, Text, Rect, Line, Circle } from 'react-konva';
-import PolyLineLayer from './PolyLineLayer';
-import { Table, TableBody, TableCell, TableRow, TextField } from '@mui/material';
+import { Stage, Layer, Arc, Text, Rect, Line, Group } from 'react-konva';
+import PolyLine from './PolyLine';
+import {indexOfMax, indexOfMin} from '../../Action/ext'
+import Leveling from './Leveling';
+import { TextField } from '@mui/material';
 
-/**
-點號	1	2	3	4	5	6	7	8
-支距	-1.598	-0.008	2.034	4.01	6.14	6.201	8.432	8.453
-前視讀數	1.194	1.156	1.121	1.136	1.182	1.179	1.125	1.125
-高程	7.991	8.029	8.064	8.049	8.003	8.006	8.06	8.06 
-
-
- */
-
-const BaseLayer = ({name, width, height, mousePos}) => {
+// 繪圖板基礎層
+const BaseLayer = ({name, width, height, mousePos, showGrid,toolConfig}) => {
+    const [grid] = useState({x: Math.floor(height/20), y: Math.floor(width/20)})
+    const genGrids = () => {
+        const lines = [];
+        for (var i = 0; i < grid.x; i++){
+            lines.push(<Line key={`grid_x_${i}`}
+                        points={[0,i*20, width, i*20]}
+                        stroke={"grey"}
+                        strokeWidth={1}  
+                        lineCap="round"
+                        lineJoin="round"
+                        y={0}
+                    />)
+        }
+        for(var i = 0; i < grid.y; i++){
+            lines.push(<Line key={`grid_y_${i}`}
+                        points={[i*20,0, i*20, height]}
+                        stroke={"grey"}
+                        strokeWidth={1}  
+                        lineCap="round"
+                        lineJoin="round"
+                        y={0}
+                    />)
+        }
+        return lines;
+    }
     return <Layer>
+        {
+            toolConfig.hasOwnProperty("SHOW_GRIDS") ? genGrids() : ""
+        }
         <Text
             x={10}
             y={15}
@@ -22,14 +44,17 @@ const BaseLayer = ({name, width, height, mousePos}) => {
             fontFamily="Calibri"
             fill="green"
         />
-        <Text
-            x={10}
-            y={height - 20}
-            text={`(${mousePos.x}, ${mousePos.y})`}
-            fontSize={12}
-            fontFamily="Calibri"
-            fill="red"
-        />
+        {
+            toolConfig.hasOwnProperty("SHOW_MOUSE_LOCATION") ? <Text
+                x={10}
+                y={height - 20}
+                text={`(${mousePos.x}, ${mousePos.y})`}
+                fontSize={12}
+                fontFamily="Calibri"
+                fill="red"
+            /> : ''
+        }
+        
         <Rect
             x={0}
             y={0}
@@ -40,47 +65,98 @@ const BaseLayer = ({name, width, height, mousePos}) => {
             />
     </Layer>
 }
-const Section = ({section, width, height}) => {
+
+
+const Section = ({section, width, height, toolConfig}) => {
     const [mousePos, setMousePos] = useState({x: 0, y: 0})
-    const [scale, setScale] = useState({x: 70, y: 200});
-    const [offset, setOffset] = useState({x: 50, y: 50})
+    const [scale] = useState({x: 70, y: 70});
+    const [offset] = useState({x:250, y: 50});
+    const [mainOffset,setMainOffset] = useState({minX: 0, maxY: 0}) // 所有曲線的位移
+    const [CL,setCL] = useState({x: 0, y: 0})
+    const [levelingCenterH, setLevelingCenterH] = useState(0)
+    // 計算位移
+    useEffect(() => {
+        if (section.layers.length > 0){
+            const p = section.layers[0].points.filter(p => p[0]===0);
+            setCL({...CL,y: p[1]})
+        }
+        const minX = section.layers.filter(l => l.type === "BASE").reduce((min, d) => {
+            const s = d.points.reduce((min, p) => p[0] < min ? p[0] : min, 10000);
+            return s < min ? s : min
+        }, 10000);
+        const maxY = section.layers.filter(l => l.type === "BASE").reduce((max, d) => {
+            const s = d.points.reduce((max, p) => p[1] > max ? p[1] : max, -10000);
+            return s < max ? s : max;
+        }, 10000);
+        setMainOffset({minX, maxY})
+    }, [section])
     return <>
-        {/* <Table>
-            <TableBody>
-                <TableRow>
-                    <TableCell><TextField variant="standard" label="左邊坡度%" fullWidth/></TableCell>
-                    <TableCell><TextField variant="standard" label="中心點高程" fullWidth/></TableCell>
-                    <TableCell><TextField variant="standard" label="右邊坡度%" fullWidth/></TableCell>
-                </TableRow>
-            </TableBody>
-        </Table> */}
+        <TextField 
+            label="中心高,cm公分"
+            variant="standard" 
+            type='number'
+            onChange={e => setLevelingCenterH(e.target.value / 100)}
+            fullWidth/>
         <Stage width={width} height={height}
             onMouseMove={e => setMousePos({x: e.evt.clientX , y: e.evt.clientY })}>
-                <BaseLayer width={width} height={height} name={section.name} mousePos={mousePos}/>
-                {
-                    section.layers.map((s, i) => 
-                    <PolyLineLayer  key={`polyline_layer_${i}`}
-                        data={s}
-                        lineColor={s.color}
-                        offset={offset}
-                        scale={scale}/>)
-                }
-                {
-
-                }
-                {
-                    section.layers.map((s, i) => 
-                        // 圖例
-                        <Layer key={`legend_${i}`}>
-                            <Text 
-                            x={10}
-                            y={50+ i * 10}
-                            text={s.name}
-                            fontSize={12}
-                            fontFamily="Calibri"
-                            fill={s.color ?? 'green'}/>
-                        </Layer>)
-                }        
+                <BaseLayer 
+                    width={width} 
+                    height={height} 
+                    name={section.name} 
+                    toolConfig={toolConfig}
+                    mousePos={mousePos}/>
+                <Layer>
+                    {
+                        section.layers.filter(l => l.type === "BASE").map((s, i) => <PolyLine key={`polyline_${i}`}
+                            data={s}
+                            mainOffset={mainOffset}
+                            lineColor={s.color}
+                            textColor={s.color}
+                            offset={offset}
+                            scale={scale}
+                            config={{
+                                showText: toolConfig.hasOwnProperty("SHOW_POINT_TEXT"),
+                                showCL: toolConfig.hasOwnProperty("SHOW_CL") && (i === 0)
+                                }}/>
+                        )
+                    }
+                    {
+                        toolConfig.hasOwnProperty("SHOW_LEVELING") ?
+                        section.layers.filter(l => l.type === "LEVELING")
+                            .map((s, i) => <Leveling key={`leveling_with_base_${i}`} 
+                                centerH={levelingCenterH}
+                                basePoints={section.layers.filter(l => l.type === "BASE")[0].points}
+                                data={s} 
+                                mainOffset={mainOffset}
+                                offset={offset}
+                                scale={scale}/>) : ""
+                    }
+                </Layer>
+                <Layer >
+                    {
+                        toolConfig.hasOwnProperty("SHOW_LEGEND") ? 
+                            // 圖例
+                            section.layers.filter(l => l.type === "BASE").map((s, i) => 
+                                <Text key={`legend_${i}`}
+                                x={10}
+                                y={50+ i * 10}
+                                text={s.name}
+                                fontSize={12}
+                                fontFamily="Calibri"
+                                fill={s.color ?? 'green'}/>
+                            ) : ""
+                    }
+                    {
+                        toolConfig.hasOwnProperty("SHOW_RATIO") 
+                            ? <Text x={width-170} y={height-20}
+                                text={`Scale:(${scale.x},${scale.y});Offset:(${offset.x},${offset.y})`}
+                                fontSize={12}
+                                fontFamily="Calibri"
+                                fill={'red'}/> 
+                            : ''
+                    }
+                    
+                </Layer>     
         </Stage>
     
     </>

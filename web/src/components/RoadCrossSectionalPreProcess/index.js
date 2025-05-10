@@ -1,23 +1,16 @@
-import React, {useState } from 'react';
-import { connect } from 'react-redux'
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import { styled } from '@mui/material/styles';
+import React, { useState } from 'react';
+import { connect } from 'react-redux';
+import Xlsx from './xlsx';
+const parser = (raw) => {
+    const range = raw['!ref'];
+    console.log(range.match(/[A-Z]+:\d+/));
+}
 
-const VisuallyHiddenInput = styled('input')({
-    clip: 'rect(0 0 0 0)',
-    clipPath: 'inset(50%)',
-    height: 1,
-    overflow: 'hidden',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    whiteSpace: 'nowrap',
-    width: 1,
-  });
 const RoadCrossSectionalPreProcess = ({}) => {
     return <>
         <h3>道路斷面分析-前置作業</h3>
         (尚未完成)
+        <Xlsx onData={d => parser(d)}/>
     </>
 }
 

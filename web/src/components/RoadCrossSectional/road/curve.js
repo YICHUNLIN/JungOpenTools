@@ -45,12 +45,4 @@ Curve.prototype.pointOfLength = function(Length){
     if (this.bulge > 0) return pCoords[0];
     return pCoords[1];
 }
-
-Curve.prototype.draw = function(ctx){
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(this.center.x, this.center.y, this.r,this.start_angles, this.end_angles);
-    ctx.stroke();
-}
-
 export default Curve;
