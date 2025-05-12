@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Arc, Text, Rect, Line, Group } from 'react-konva';
 import PolyLine from './PolyLine';
+import SlopeAnalysis from './SlopeAnalysis'
 import {indexOfMax, indexOfMin} from '../../Action/ext'
 import Leveling from './Leveling';
 import { TextField } from '@mui/material';
@@ -126,6 +127,15 @@ const Section = ({section, width, height, toolConfig}) => {
                                 showCL: toolConfig.hasOwnProperty("SHOW_CL") && (i === 0)
                                 }}/>
                         )
+                    }
+                    {
+                        toolConfig.hasOwnProperty("SHOW_SLOPE_ANALYSIS") ?
+                        section.layers.filter(l => l.type === "BASE")
+                            .map((s, i) => <SlopeAnalysis key={`slope_analysis_${i}`}
+                                basePoints={s.points}
+                                mainOffset={mainOffset}
+                                offset={offset}
+                                scale={scale}/> ) : ''
                     }
                     {
                         toolConfig.hasOwnProperty("SHOW_LEVELING") ?

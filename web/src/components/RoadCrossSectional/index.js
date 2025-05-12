@@ -24,6 +24,7 @@ const ToolTips = ({onClick}) => {
         {name: "中心線", id: "SHOW_CL"},
         {name: "點位資訊", id: "SHOW_POINT_TEXT"},
         {name: "鋪築調整", id: "SHOW_LEVELING"},
+        {name: "洩水分析", id: "SHOW_SLOPE_ANALYSIS"},
         {name: "倍率", id: "SHOW_RATIO"}])
     return <>
         {
