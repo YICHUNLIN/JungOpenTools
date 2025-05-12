@@ -14,7 +14,7 @@ import RoadCrossSectionalPreProcess from './components/RoadCrossSectionalPreProc
 
 const pages = [
   {name: '座標轉換', to: '/km/gis', route: <Kmgis/>},
-  {name: '斷面分析(前置作業)', to: '/road/crossSectionalPreProcess', route: <RoadCrossSectionalPreProcess/>},
+  {name: '斷面分析(前置作業,小金路網專用)', to: '/road/crossSectionalPreProcess', route: <RoadCrossSectionalPreProcess/>},
   {name: '斷面分析', to: '/road/crossSectional', route: <RoadCrossSectional/>},
 ];
 const App = ({}) => {

@@ -94,12 +94,16 @@ const Section = ({section, width, height, toolConfig}) => {
     if (section.layers.filter(l => l.type === "BASE").length > 1) return <p>{section.name} BASE層 只能有一個</p>
     if (section.layers.filter(l => l.type === "LEVELING").length > 1) return <p>{section.name} LEVELING層 只能有一個</p>
     return <>
-        <TextField 
+        {
+            toolConfig.hasOwnProperty("SHOW_LEVELING") ? 
+            <TextField 
             label="中心高,cm公分"
             variant="standard" 
             type='number'
             onChange={e => setLevelingCenterH(e.target.value / 100)}
-            fullWidth/>
+            fullWidth/> : ''
+        }
+        
         <Stage width={width} height={height}
             onMouseMove={e => setMousePos({x: e.evt.clientX , y: e.evt.clientY })}>
                 <BaseLayer 
