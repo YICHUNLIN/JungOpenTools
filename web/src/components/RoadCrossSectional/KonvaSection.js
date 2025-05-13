@@ -68,7 +68,7 @@ const BaseLayer = ({name, width, height, mousePos, showGrid,toolConfig}) => {
 }
 
 
-const Section = ({section, width, height, scale, toolConfig, h}) => {
+const Section = ({section, width, height, scale, toolConfig, h, ls, rs}) => {
     const [mousePos, setMousePos] = useState({x: 0, y: 0})
     const [offset] = useState({x:250, y: 50});
     const [mainOffset,setMainOffset] = useState({minX: 0, maxY: 0}) // 所有曲線的位移
@@ -177,8 +177,8 @@ const Section = ({section, width, height, scale, toolConfig, h}) => {
                                 centerH={levelingCenterH + h}
                                 basePoints={section.layers.filter(l => l.type === "BASE")[0].points}
                                 data={s} 
-                                lslope={lslope}
-                                rslope={rslope}
+                                lslope={lslope + ls}
+                                rslope={rslope + rs}
                                 mainOffset={mainOffset}
                                 offset={offset}
                                 scale={scale}/>) : ""

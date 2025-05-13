@@ -79,6 +79,8 @@ const RoadCrossSectional = ({}) => {
     const [funcs, setFuncs] = useState([]);
     const [scale, setScale] = useState({x: 70, y: 70});
     const [h, setH] = useState(0)
+    const [lslope, setLSlope] = useState(0)
+    const [rslope, setRSlope] = useState(0)
     return <>
         <h3>道路斷面分析</h3>
         <Upload onData={setData} onError={setError}/>
@@ -101,6 +103,14 @@ const RoadCrossSectional = ({}) => {
             label="統一高程"
             variant="standard" 
             type='number' onChange={e => setH(e.target.value / 100)}/> 
+        <TextField 
+            label="統一左側高程%"
+            variant="standard" 
+            type='number' onChange={e => setLSlope(e.target.value / 100)}/> 
+        <TextField 
+            label="統一右側高程%"
+            variant="standard" 
+            type='number' onChange={e => setRSlope(e.target.value / 100)}/> 
         <p/>
         {
             data.map((d, i) => <Section 
@@ -109,6 +119,8 @@ const RoadCrossSectional = ({}) => {
                                     section={d} 
                                     scale={scale}
                                     h={h}
+                                    ls={lslope}
+                                    rs={rslope}
                                     width={1400} 
                                     height={300}/>)
         }
