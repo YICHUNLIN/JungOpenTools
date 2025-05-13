@@ -82,6 +82,7 @@ const Section = ({section, width, height, toolConfig}) => {
             setCL({...CL,y: p[1]})
         }
         const minX = section.layers.filter(l => l.type === "BASE").reduce((min, d) => {
+            console.log(d.points)
             const s = d.points.reduce((min, p) => p[0] < min ? p[0] : min, 10000);
             return s < min ? s : min
         }, 10000);
@@ -129,6 +130,22 @@ const Section = ({section, width, height, toolConfig}) => {
                         )
                     }
                     {
+
+                        toolConfig.hasOwnProperty("SHOW_OTHER") ?
+                        section.layers.filter(l => l.type === "NORMAL").map((s, i) => <PolyLine key={`polyline_normal_${i}`}
+                            data={s}
+                            mainOffset={mainOffset}
+                            lineColor={s.color}
+                            textColor={s.color}
+                            offset={offset}
+                            scale={scale}
+                            config={{
+                                showText: toolConfig.hasOwnProperty("SHOW_POINT_TEXT"),
+                                showCL: toolConfig.hasOwnProperty("SHOW_CL") && (i === 0)
+                            }}/>
+                        ): ""
+                    }
+                    {
                         toolConfig.hasOwnProperty("SHOW_SLOPE_ANALYSIS") ?
                         section.layers.filter(l => l.type === "BASE")
                             .map((s, i) => <SlopeAnalysis key={`slope_analysis_${i}`}
@@ -153,10 +170,10 @@ const Section = ({section, width, height, toolConfig}) => {
                     {
                         toolConfig.hasOwnProperty("SHOW_LEGEND") ? 
                             // 圖例
-                            section.layers.filter(l => l.type === "BASE").map((s, i) => 
+                            section.layers.map((s, i) => 
                                 <Text key={`legend_${i}`}
                                 x={10}
-                                y={50+ i * 10}
+                                y={50+ i * 20}
                                 text={s.name}
                                 fontSize={12}
                                 fontFamily="Calibri"

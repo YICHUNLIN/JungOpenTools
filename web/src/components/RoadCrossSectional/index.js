@@ -19,6 +19,7 @@ const ToolBtn = ({info, onClick}) => {
 const ToolTips = ({onClick}) => {
     const [funcs] = useState([
         {name: "圖例", id: "SHOW_LEGEND"},
+        {name: "其他圖層", id: "SHOW_OTHER"},
         {name: "滑鼠座標", id: "SHOW_MOUSE_LOCATION"},
         {name: "網格", id: "SHOW_GRIDS"}, 
         {name: "中心線", id: "SHOW_CL"},

@@ -52,7 +52,7 @@ const PolyLine = ({data, scale, offset, lineColor, pointColor, textColor, config
                 points.reduce((map, d) => ([...map, [(d[0] - mainOffset.minX)*scale.x + offset.x, (mainOffset.maxY - d[1] )*scale.y + baseY + offset.y]]), [])
                     .map((p, i) => <Text key={`point_${i}_txt`}
                                 x={p[0]-20}
-                                y={p[1]+20 * (i % 2 == 0 ? 1 : 1.5)}
+                                y={p[1]+30 * (i % 2 == 0 ? 1 : 1.7)}
                                 text={`(${points[i][0].toFixed(3)}, ${points[i][1].toFixed(3)})`}
                                 fontSize={8}
                                 fontFamily="Calibri"
