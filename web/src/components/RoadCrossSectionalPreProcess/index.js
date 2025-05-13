@@ -35,7 +35,7 @@ const combineMileAndH = (miles, Hs) => {
         if (hd.hasOwnProperty(k)){
             const s = d[k].map((p, i) => ([p.x, hd[k][i]]));
             return {...map, [k]: s}
-        }
+        } else console.log(k)
         return map;
     }, {});
     return o;
@@ -45,13 +45,13 @@ const combineMileAndH = (miles, Hs) => {
 const RoadCrossSectionalPreProcess = ({}) => {
     const [fileData, setFileData] = useState({step1: {d: [], h: []}, step2: {d: [], h: []}})
 
-    const [result, setResult] = useState([])
-    useEffect(() => {
+    const exportData = () => {
         const {step1, step2} = fileData;
         const o1 = combineMileAndH(step1.d, step1.h);
         const o2 = combineMileAndH(step2.d, step2.h);
+        let r = [];
         if (Object.keys(o2).length > 0) {
-            const r = Object.keys(o2).map(k => {
+            Object.keys(o2).map(k => {
                     const md = {
                         name: k,
                         layers: [
@@ -72,6 +72,7 @@ const RoadCrossSectionalPreProcess = ({}) => {
                             }
                         ]
                     }
+                    console.log(k, o1.hasOwnProperty(k))
                     if (o1.hasOwnProperty(k)) 
                         md.layers = [...md.layers, {
                             name: "刨除前",
@@ -79,12 +80,11 @@ const RoadCrossSectionalPreProcess = ({}) => {
                             points: o1[k],
                             color: 'grey'
                         }]
+                    else console.log(o1)
                     return md;
                 })
-
-            setResult(r)
         } else {
-            const r = Object.keys(o1)
+            r = Object.keys(o1)
                 .map(k => {
                     return {
                         name: k,
@@ -107,13 +107,11 @@ const RoadCrossSectionalPreProcess = ({}) => {
                         ]
                     }
                 })
-            setResult(r)
         }
-    }, [fileData])
 
-    const exportData = () => {
+
         const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(
-          JSON.stringify(result)
+          JSON.stringify(r)
         )}`;
         const link = document.createElement("a");
         link.href = jsonString;

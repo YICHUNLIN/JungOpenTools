@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Arc, Text, Rect, Line, Circle } from 'react-konva';
 import {findZeroIndex, genZero, genSlope, pointDistOfLine} from '../../Action/ext'
-const Leveling = ({data, basePoints, mainOffset, scale, offset, centerH}) => {
+const Leveling = ({data, basePoints, mainOffset, scale, offset, centerH, lslope, rslope}) => {
     const [baseY] = useState(50)
     const [points, setPoints] = useState([]);
     const [zeroIndex, setZeroIndex] = useState(0)
@@ -14,13 +14,14 @@ const Leveling = ({data, basePoints, mainOffset, scale, offset, centerH}) => {
         }
     }, [data])
 
+
     const trainX = (x) => (x - mainOffset.minX) * scale.x + offset.x
     const trainY = (y) => (mainOffset.maxY - y) * scale.y + baseY + offset.y
 
     const shows = () => {
         let h = points[zeroIndex][1] + centerH;
-        let leftH = genSlope(data.llength, data.lslope, h)
-        let rightH = genSlope(data.rlength, data.rslope, h)
+        let leftH = genSlope(data.llength, lslope, h)
+        let rightH = genSlope(data.rlength, rslope, h)
         const s1 = points.filter(p => p[0] < 0)
             .map(p => ([trainX(p[0]), trainY(p[1]), pointDistOfLine({x:p[0], y:p[1]},{x: -data.llength,y: leftH}, {x:0, y:h})]))
         const s2 = points.filter(p => p[0] >= 0)
@@ -78,7 +79,7 @@ const Leveling = ({data, basePoints, mainOffset, scale, offset, centerH}) => {
             <Text
                 x={(ps[0][0] + ps[1][0]) / 2}
                 y={baseY}
-                text={`L.Slope=${data.lslope * 100} %`}
+                text={`L.Slope=${lslope * 100} %`}
                 fontSize={8}
                 fontFamily="Calibri"
                 fill={"red"}
@@ -95,7 +96,7 @@ const Leveling = ({data, basePoints, mainOffset, scale, offset, centerH}) => {
             <Text
                 x={(ps[1][0] + ps[2][0]) / 2}
                 y={baseY}
-                text={`R.Slope=${data.rslope * 100} %`}
+                text={`R.Slope=${rslope * 100} %`}
                 fontSize={8}
                 fontFamily="Calibri"
                 fill={"red"}

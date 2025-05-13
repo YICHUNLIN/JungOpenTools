@@ -68,12 +68,15 @@ const BaseLayer = ({name, width, height, mousePos, showGrid,toolConfig}) => {
 }
 
 
-const Section = ({section, width, height, scale, toolConfig}) => {
+const Section = ({section, width, height, scale, toolConfig, h}) => {
     const [mousePos, setMousePos] = useState({x: 0, y: 0})
     const [offset] = useState({x:250, y: 50});
     const [mainOffset,setMainOffset] = useState({minX: 0, maxY: 0}) // 所有曲線的位移
     const [CL,setCL] = useState({x: 0, y: 0})
     const [levelingCenterH, setLevelingCenterH] = useState(0)
+    const [lslope, setLSlope] = useState(0);
+    const [rslope, setRSlope] = useState(0);
+    useEffect(() => console.log(h), [h])
     // 計算位移
     useEffect(() => {
         if (section.layers.length > 0){
@@ -81,7 +84,6 @@ const Section = ({section, width, height, scale, toolConfig}) => {
             setCL({...CL,y: p[1]})
         }
         const minX = section.layers.filter(l => l.type === "BASE").reduce((min, d) => {
-            console.log(d.points)
             const s = d.points.reduce((min, p) => p[0] < min ? p[0] : min, 10000);
             return s < min ? s : min
         }, 10000);
@@ -97,12 +99,27 @@ const Section = ({section, width, height, scale, toolConfig}) => {
     return <>
         {
             toolConfig.hasOwnProperty("SHOW_LEVELING") ? 
-            <TextField 
-            label="中心高,cm公分"
-            variant="standard" 
-            type='number'
-            onChange={e => setLevelingCenterH(e.target.value / 100)}
-            fullWidth/> : ''
+            <>
+                <TextField 
+                    label="中心高,cm公分"
+                    variant="standard" 
+                    type='number'
+                    onChange={e => setLevelingCenterH(e.target.value / 100)}
+                    />
+                <TextField 
+                    label="左側坡度%"
+                    variant="standard" 
+                    type='number'
+                    onChange={e => setLSlope(e.target.value / 100)}
+                    />
+                
+                <TextField 
+                    label="右側坡度%"
+                    variant="standard" 
+                    type='number'
+                    onChange={e => setRSlope(e.target.value / 100)}
+                    />
+            </> : ''
         }
         
         <Stage width={width} height={height}
@@ -157,9 +174,11 @@ const Section = ({section, width, height, scale, toolConfig}) => {
                         toolConfig.hasOwnProperty("SHOW_LEVELING") ?
                         section.layers.filter(l => l.type === "LEVELING")
                             .map((s, i) => <Leveling key={`leveling_with_base_${i}`} 
-                                centerH={levelingCenterH}
+                                centerH={levelingCenterH + h}
                                 basePoints={section.layers.filter(l => l.type === "BASE")[0].points}
                                 data={s} 
+                                lslope={lslope}
+                                rslope={rslope}
                                 mainOffset={mainOffset}
                                 offset={offset}
                                 scale={scale}/>) : ""
