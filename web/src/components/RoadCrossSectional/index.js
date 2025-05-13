@@ -77,6 +77,7 @@ const RoadCrossSectional = ({}) => {
     const [data, setData] = useState([])
     const [error, setError] = useState("");
     const [funcs, setFuncs] = useState([]);
+    const [scale, setScale] = useState({x: 70, y: 70});
     return <>
         <h3>道路斷面分析</h3>
         <Upload onData={setData} onError={setError}/>
@@ -85,11 +86,23 @@ const RoadCrossSectional = ({}) => {
             setFuncs(funcs.includes(e) ? funcs.filter(f => f !== e) : [...funcs, e])
         }}/>
         <p/>
+        <TextField 
+            label="X軸比例"
+            variant="standard" 
+            value={scale.x}
+            type='number' onChange={e => setScale({...scale, x: e.target.value})}/> 
+        <TextField 
+            label="Y軸比例"
+            variant="standard" 
+            value={scale.y}
+            type='number' onChange={e => setScale({...scale, y: e.target.value})}/> 
+        <p/>
         {
             data.map((d, i) => <Section 
                                     key={`section_${i}`}
                                     toolConfig={funcs.reduce((map, f) => ({[f]: true, ...map}), {})}
                                     section={d} 
+                                    scale={scale}
                                     width={1400} 
                                     height={300}/>)
         }

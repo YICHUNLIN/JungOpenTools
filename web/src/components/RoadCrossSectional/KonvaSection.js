@@ -68,9 +68,8 @@ const BaseLayer = ({name, width, height, mousePos, showGrid,toolConfig}) => {
 }
 
 
-const Section = ({section, width, height, toolConfig}) => {
+const Section = ({section, width, height, scale, toolConfig}) => {
     const [mousePos, setMousePos] = useState({x: 0, y: 0})
-    const [scale] = useState({x: 70, y: 70});
     const [offset] = useState({x:250, y: 50});
     const [mainOffset,setMainOffset] = useState({minX: 0, maxY: 0}) // 所有曲線的位移
     const [CL,setCL] = useState({x: 0, y: 0})
