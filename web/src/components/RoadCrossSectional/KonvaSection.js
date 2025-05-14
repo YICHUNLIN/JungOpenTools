@@ -4,7 +4,7 @@ import PolyLine from './PolyLine';
 import SlopeAnalysis from './SlopeAnalysis'
 import {indexOfMax, indexOfMin} from '../../Action/ext'
 import Leveling from './Leveling';
-import { TextField } from '@mui/material';
+import { Button, TextField } from '@mui/material';
 
 // 繪圖板基礎層
 const BaseLayer = ({name, width, height, mousePos, showGrid,toolConfig}) => {
@@ -69,6 +69,7 @@ const BaseLayer = ({name, width, height, mousePos, showGrid,toolConfig}) => {
 
 
 const Section = ({section, width, height, scale, toolConfig, h, ls, rs}) => {
+    const stageRef = useRef(null);
     const [mousePos, setMousePos] = useState({x: 0, y: 0})
     const [offset] = useState({x:250, y: 50});
     const [mainOffset,setMainOffset] = useState({minX: 0, maxY: 0}) // 所有曲線的位移
@@ -93,6 +94,18 @@ const Section = ({section, width, height, scale, toolConfig, h, ls, rs}) => {
         }, 10000);
         setMainOffset({minX, maxY})
     }, [section])
+    const handleExport = () => {
+        const dataURL = stageRef.current.toDataURL({
+            pixelRatio: 2 // double resolution
+        });
+        
+        const link = document.createElement('a');
+        link.download = `${section.name}.png`;
+        link.href = dataURL;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     if (section.layers.filter(l => l.type === "BASE").length > 1) return <p>{section.name} BASE層 只能有一個</p>
     if (section.layers.filter(l => l.type === "LEVELING").length > 1) return <p>{section.name} LEVELING層 只能有一個</p>
@@ -121,8 +134,9 @@ const Section = ({section, width, height, scale, toolConfig, h, ls, rs}) => {
                     />
             </> : ''
         }
+        <Button onClick={handleExport}>下載圖片</Button>
         
-        <Stage width={width} height={height}
+        <Stage width={width} height={height} ref={stageRef}
             onMouseMove={e => setMousePos({x: e.evt.clientX , y: e.evt.clientY })}>
                 <BaseLayer 
                     width={width} 
