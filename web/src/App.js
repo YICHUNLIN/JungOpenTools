@@ -12,13 +12,16 @@ import Footer from './footer'
 import Typography from '@mui/material/Typography';
 import RoadCrossSectionalPreProcess from './components/RoadCrossSectionalPreProcess';
 import Concrete from './components/concrete';
+import AsphaltConcrete from './components/asphaltConcrete';
 
 const pages = [
   {name: '座標轉換', to: '/km/gis', route: <Kmgis/>},
   {name: '斷面分析(前置作業,小金路網專用)', to: '/road/crossSectionalPreProcess', route: <RoadCrossSectionalPreProcess/>},
   {name: '斷面分析', to: '/road/crossSectional', route: <RoadCrossSectional/>},
-  {name: '混凝土配比設計', to: '/concrete/design', route: <Concrete/>},
+  {name: '水泥混凝土配比設計', to: '/concrete/design', route: <Concrete/>},
+  {name: '瀝青混凝土配比設計', to: '/ac/design', route: <AsphaltConcrete/>},
 ];
+
 const App = ({}) => {
   return (
     <>      

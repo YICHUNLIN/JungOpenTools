@@ -9,6 +9,7 @@ const apps = [
     {name: "斷面分析(前置作業,小金路網專用)", desc: "excel->Json", to: "/road/crossSectionalPreProcess"},
     {name: "斷面分析", desc: "道路斷面分析", to: "/road/crossSectional"},
     {name: "混凝土", desc: "配比設計", to: "/concrete/design"},
+    {name: "瀝青混凝土", desc: "瀝青混凝土配比設計", to: "/ac/design"},
 ]
 
 const Home = ({}) => {
