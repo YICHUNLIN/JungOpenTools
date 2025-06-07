@@ -8,6 +8,7 @@ const apps = [
     {name: "操作許可證", desc: "空污許可證", to: "https://epalic.kmn.tw/"},
     {name: "斷面分析(前置作業,小金路網專用)", desc: "excel->Json", to: "/road/crossSectionalPreProcess"},
     {name: "斷面分析", desc: "道路斷面分析", to: "/road/crossSectional"},
+    {name: "混凝土", desc: "配比設計", to: "/concrete/design"},
 ]
 
 const Home = ({}) => {
