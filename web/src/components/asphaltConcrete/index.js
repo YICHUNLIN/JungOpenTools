@@ -161,6 +161,7 @@ function AsphaltConcrete() {
     const [results, setResults] = useState(null);
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState(0);
+    const [gradationErrors, setGradationErrors] = useState({});
 
     // --- 事件處理函式 ---
 
@@ -183,12 +184,41 @@ function AsphaltConcrete() {
             return newSpecs;
         });
     };
+    
+    const validateAllGradations = (currentGradations) => {
+        const errors = {};
+        for (const materialKey in currentGradations) {
+            // 檢核：範圍 (0-100) 與遞減趨勢
+            for (let sieveIndex = 0; sieveIndex < currentGradations[materialKey].length; sieveIndex++) {
+                const currentValue = currentGradations[materialKey][sieveIndex];
+                
+                if (currentValue < 0 || currentValue > 100) {
+                    errors[`${materialKey}-${sieveIndex}`] = '0-100';
+                } else if (sieveIndex > 0) {
+                    const previousValue = currentGradations[materialKey][sieveIndex - 1];
+                    if (currentValue > previousValue) {
+                        errors[`${materialKey}-${sieveIndex}`] = '應≦上一篩號';
+                    }
+                }
+            }
+        }
+        return errors;
+    };
 
     const handleCalculate = () => {
         setError('');
         setResults(null);
+        
+        // 檢核篩分析資料
+        const gradErrors = validateAllGradations(gradations);
+        setGradationErrors(gradErrors);
 
-        // 驗證
+        if (Object.keys(gradErrors).length > 0) {
+            setError('篩分析資料有誤，請檢查紅色欄位。');
+            return;
+        }
+
+        // 檢核集料摻配比例
         const totalProportion = Object.values(proportions).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
         if (Math.round(totalProportion) !== 100) {
             setError(`集料摻配比例總和必須為 100%，目前為 ${totalProportion}%。`);
@@ -264,11 +294,15 @@ function AsphaltConcrete() {
                 <Grid container spacing={3} sx={{ mb: 4 }}>
                     <Grid item xs={12} sm={6}>
                         <TextField fullWidth label="目標總重量 (公斤)" type="number" value={totalWeight}
-                            onChange={(e) => setTotalWeight(parseFloat(e.target.value) || 0)} />
+                            onChange={(e) => setTotalWeight(Math.max(0, parseFloat(e.target.value) || 0))} 
+                            inputProps={{ min: 0 }}
+                            />
                     </Grid>
                     <Grid item xs={12} sm={6}>
                         <TextField fullWidth label="瀝青膠泥含量 (%)" type="number" value={asphaltBinder}
-                            onChange={(e) => setAsphaltBinder(parseFloat(e.target.value) || 0)} />
+                            onChange={(e) => setAsphaltBinder(Math.max(0, parseFloat(e.target.value) || 0))} 
+                            inputProps={{ min: 0 }}
+                            />
                     </Grid>
                 </Grid>
 
@@ -285,7 +319,9 @@ function AsphaltConcrete() {
                                     <Grid item xs={6} md={4} lg={2.4} key={key}>
                                         <TextField fullWidth label={MATERIALS[key].name} type="number"
                                             value={proportions[key]}
-                                            onChange={e => handleProportionChange(key, parseFloat(e.target.value) || 0)} />
+                                            onChange={e => handleProportionChange(key, Math.max(0, parseFloat(e.target.value) || 0))} 
+                                            inputProps={{ min: 0 }}
+                                            />
                                     </Grid>
                                 ))}
                             </Grid>
@@ -318,8 +354,11 @@ function AsphaltConcrete() {
                                                     <TableCell key={key} align="right">
                                                         <TextField type="number" size="small" sx={{ width: '80px' }}
                                                             value={gradations[key][sieveIndex]}
-                                                            onChange={e => handleGradationChange(key, sieveIndex, parseFloat(e.target.value) || 0)}
-                                                            inputProps={{ style: { textAlign: 'right' } }} />
+                                                            onChange={e => handleGradationChange(key, sieveIndex, Math.max(0, parseFloat(e.target.value) || 0))}
+                                                            inputProps={{ min: 0, style: { textAlign: 'right' } }}
+                                                            error={!!gradationErrors[`${key}-${sieveIndex}`]}
+                                                            helperText={gradationErrors[`${key}-${sieveIndex}`]}
+                                                            />
                                                     </TableCell>
                                                 ))}
                                             </TableRow>
@@ -351,8 +390,18 @@ function AsphaltConcrete() {
                                             <TableRow key={spec.sieveId}>
                                                 <TableCell><Checkbox checked={spec.enabled} onChange={e => handleSpecChange(i, 'enabled', e.target.checked)} /></TableCell>
                                                 <TableCell>{spec.sieveName}</TableCell>
-                                                <TableCell><TextField type="number" size="small" fullWidth disabled={!spec.enabled} value={spec.lower ?? ''} onChange={e => handleSpecChange(i, 'lower', parseFloat(e.target.value) || 0)} inputProps={{ style: { textAlign: 'right' } }} /></TableCell>
-                                                <TableCell><TextField type="number" size="small" fullWidth disabled={!spec.enabled} value={spec.upper ?? ''} onChange={e => handleSpecChange(i, 'upper', parseFloat(e.target.value) || 0)} inputProps={{ style: { textAlign: 'right' } }} /></TableCell>
+                                                <TableCell>
+                                                    <TextField type="number" size="small" fullWidth disabled={!spec.enabled} 
+                                                        value={spec.lower ?? ''} 
+                                                        onChange={e => handleSpecChange(i, 'lower', Math.max(0, parseFloat(e.target.value) || 0))} 
+                                                        inputProps={{ min: 0, style: { textAlign: 'right' } }} />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <TextField type="number" size="small" fullWidth disabled={!spec.enabled} 
+                                                        value={spec.upper ?? ''} 
+                                                        onChange={e => handleSpecChange(i, 'upper', Math.max(0, parseFloat(e.target.value) || 0))} 
+                                                        inputProps={{ min: 0, style: { textAlign: 'right' } }} />
+                                                </TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
