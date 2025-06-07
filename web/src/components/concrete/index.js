@@ -189,15 +189,10 @@ export default function App() {
 
     // --- 渲染 (Render) ---
     return (
-        <ThemeProvider theme={theme}>
-            <CssBaseline />
-            <Container maxWidth="lg" sx={{ py: 4, backgroundColor: '#f5f5f5', minHeight: '100vh' }}>
+            <Container maxWidth="lg" sx={{ py: 4,  minHeight: '100vh' }}>
                 <header>
                     <Typography variant="h1" align="center" gutterBottom color="text.primary">
                         進階配比設計計算機
-                    </Typography>
-                    <Typography variant="subtitle1" align="center" color="text.secondary" sx={{ mb: 4 }}>
-                        Material-UI 版本 / 含骨材含水量調整
                     </Typography>
                 </header>
 
@@ -285,6 +280,5 @@ export default function App() {
                     </Grid>
                 </Grid>
             </Container>
-        </ThemeProvider>
     );
 }
