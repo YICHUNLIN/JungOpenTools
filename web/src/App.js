@@ -13,6 +13,7 @@ import Typography from '@mui/material/Typography';
 import RoadCrossSectionalPreProcess from './components/RoadCrossSectionalPreProcess';
 import Concrete from './components/concrete';
 import AsphaltConcrete from './components/asphaltConcrete';
+import DesignMap from './components/designMap';
 
 const pages = [
   {name: '座標轉換', to: '/km/gis', route: <Kmgis/>},
@@ -20,6 +21,7 @@ const pages = [
   {name: '斷面分析', to: '/road/crossSectional', route: <RoadCrossSectional/>},
   {name: '水泥混凝土配比設計', to: '/concrete/design', route: <Concrete/>},
   {name: '瀝青混凝土配比設計', to: '/ac/design', route: <AsphaltConcrete/>},
+  {name: '咖啡廳位置配置', to: '/map/design', route: <DesignMap/>},
 ];
 
 const App = ({}) => {
