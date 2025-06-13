@@ -7,9 +7,7 @@ const apps = [
     {name: "金門限定-座標轉換", desc: "TWD97 與 WGS84", to: "/km/gis"},
     {name: "操作許可證", desc: "空污許可證", to: "https://epalic.kmn.tw/"},
     {name: "斷面分析(前置作業,小金路網專用)", desc: "excel->Json", to: "/road/crossSectionalPreProcess"},
-    {name: "斷面分析", desc: "道路斷面分析", to: "/road/crossSectional"},
-    {name: "混凝土", desc: "配比設計", to: "/concrete/design"},
-    {name: "瀝青混凝土", desc: "瀝青混凝土配比設計", to: "/ac/design"},
+    {name: "斷面分析", desc: "道路斷面分析", to: "/road/crossSectional"}
 ]
 
 const Home = ({}) => {
