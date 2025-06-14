@@ -13,7 +13,11 @@ import {
     createTheme,
     Tooltip,
     Divider,
-    Box
+    Box,
+    Select,
+    MenuItem,
+    FormControl,
+    InputLabel
 } from '@mui/material';
 import SpeedIcon from '@mui/icons-material/Speed';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
@@ -75,6 +79,8 @@ export default function ConcreteInverse() {
         fineSand: 410,
         sixPartsStone: 570,
         threePartsStone: 380,
+        admixtureType: 'none', 
+        admixtureWeight: 3.4, // 新增：減水劑摻入量 (kg)
         // 用於體積校核的預設參數
         cementSg: 3.15,
         scmSg: 2.90,
@@ -88,7 +94,8 @@ export default function ConcreteInverse() {
     // --- 事件處理器 ---
     const handleInputChange = useCallback((e) => {
         const { name, value } = e.target;
-        setInputs(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+        const processedValue = name !== 'admixtureType' ? parseFloat(value) || 0 : value;
+        setInputs(prev => ({ ...prev, [name]: processedValue }));
     }, []);
 
     // --- 核心計算邏輯 ---
@@ -96,7 +103,7 @@ export default function ConcreteInverse() {
         setError('');
         setResult(null);
 
-        const { water, cement, slag, coarseSand, fineSand, sixPartsStone, threePartsStone, ...sgValues } = inputs;
+        const { water, cement, slag, coarseSand, fineSand, sixPartsStone, threePartsStone, admixtureType, admixtureWeight, ...sgValues } = inputs;
         
         const totalCementitious = cement + slag;
         if (totalCementitious === 0) {
@@ -113,28 +120,38 @@ export default function ConcreteInverse() {
         
         let baseStrengthFcr = interpolate(wcm, lowerWcm, WCM_TO_STRENGTH_TABLE[lowerWcm], upperWcm, WCM_TO_STRENGTH_TABLE[upperWcm]);
 
-        // *** 新增：根據粗骨材級配調整強度 ***
+        // 根據粗骨材級配調整強度
         const totalCoarseAggregate = sixPartsStone + threePartsStone;
         let gradationPenalty = 0;
         if (totalCoarseAggregate > 0) {
             const largeStoneRatio = sixPartsStone / totalCoarseAggregate;
-            // 假設最佳比例為65%，當比例偏離此值時，給予強度折減
             const deviation = Math.abs(largeStoneRatio - 0.65);
-            // 偏離超過15%才開始計算折減，最大折減約300 psi
             if (deviation > 0.15) {
-                gradationPenalty = (deviation - 0.15) * 600; // 乘以一個係數
+                gradationPenalty = (deviation - 0.15) * 600;
             }
         }
         
-        // 洛杉磯磨損率固定為30%，因此無強度調整
-        const adjustedFcr = baseStrengthFcr - gradationPenalty;
+        // *** 根據減水劑類型與摻入量(kg)給予強度加成 ***
+        let admixtureBonus = 0;
+        if (admixtureType !== 'none' && admixtureWeight > 0) {
+            const admixtureDosagePercent = (admixtureWeight / totalCementitious) * 100;
+            if (admixtureType === 'normal') {
+                // e.g., 0.5% dosage -> 3% bonus
+                admixtureBonus = baseStrengthFcr * (admixtureDosagePercent / 100) * 6;
+            } else if (admixtureType === 'high_range') {
+                // e.g., 1.0% dosage -> 7% bonus
+                admixtureBonus = baseStrengthFcr * (admixtureDosagePercent / 100) * 7;
+            }
+        }
+
+        const adjustedFcr = baseStrengthFcr - gradationPenalty + admixtureBonus;
 
         // 從平均強度(f'cr)推估指定強度(f'c)
         const overdesignMargin = (adjustedFcr <= 5000 + 1200) ? 1200 : 1400;
-        const estimatedFcPsi = Math.round((adjustedFcr - overdesignMargin) / 10) * 10; // 四捨五入到10
+        const estimatedFcPsi = Math.round((adjustedFcr - overdesignMargin) / 10) * 10;
 
         // 換算為 kgf/cm2
-        const estimatedFcKgcm2 = Math.round((estimatedFcPsi * PSI_TO_KGCM2) / 5) * 5; // 四捨五入到5
+        const estimatedFcKgcm2 = Math.round((estimatedFcPsi * PSI_TO_KGCM2) / 5) * 5;
 
         // 體積校核
         const totalFineAggregate = coarseSand + fineSand;
@@ -155,7 +172,7 @@ export default function ConcreteInverse() {
     }, [inputs]);
 
     return (
-            <Container maxWidth="lg" sx={{ py: 4,  minHeight: '100vh' }}>
+            <Container maxWidth="md" sx={{ py: 4,  minHeight: '100vh' }}>
                 <header>
                     <Typography variant="h1" align="center" gutterBottom color="text.primary">
                         混凝土強度反向推估工具
@@ -173,14 +190,33 @@ export default function ConcreteInverse() {
                                 <Grid item xs={12} sm={6}><MuiInput label="水 (kg)" name="water" value={inputs.water} onChange={handleInputChange} /></Grid>
                                 <Grid item xs={12} sm={6}><MuiInput label="水泥 (kg)" name="cement" value={inputs.cement} onChange={handleInputChange} /></Grid>
                                 <Grid item xs={12} sm={6}><MuiInput label="爐石粉 (kg)" name="slag" value={inputs.slag} onChange={handleInputChange} /></Grid>
+                                <Grid item xs={12} sm={6}>
+                                    <FormControl fullWidth size="small">
+                                        <InputLabel id="admixture-type-label">減水劑類型</InputLabel>
+                                        <Select
+                                            labelId="admixture-type-label"
+                                            id="admixtureType"
+                                            name="admixtureType"
+                                            value={inputs.admixtureType}
+                                            label="減水劑類型"
+                                            onChange={handleInputChange}
+                                        >
+                                            <MenuItem value="none">無</MenuItem>
+                                            <MenuItem value="normal">普通型 (減水率 5-12%)</MenuItem>
+                                            <MenuItem value="high_range">高性能 (強塑劑, 12-30%)</MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                </Grid>
+                                {inputs.admixtureType !== 'none' && (
+                                    <Grid item xs={12}>
+                                        <MuiInput label="減水劑摻入量 (kg)" name="admixtureWeight" type="number" value={inputs.admixtureWeight} onChange={handleInputChange} inputProps={{ step: 0.1 }} />
+                                    </Grid>
+                                )}
+                                <Grid item xs={12}><Divider>骨材</Divider></Grid>
+                                <Grid item xs={12} sm={6}><MuiInput label="六分石 (3/4&quot;) (kg)" name="sixPartsStone" value={inputs.sixPartsStone} onChange={handleInputChange} /></Grid>
+                                <Grid item xs={12} sm={6}><MuiInput label="三分石 (3/8&quot;) (kg)" name="threePartsStone" value={inputs.threePartsStone} onChange={handleInputChange} /></Grid>
                                 <Grid item xs={12} sm={6}><MuiInput label="粗砂 (kg)" name="coarseSand" value={inputs.coarseSand} onChange={handleInputChange} /></Grid>
                                 <Grid item xs={12} sm={6}><MuiInput label="細砂 (kg)" name="fineSand" value={inputs.fineSand} onChange={handleInputChange} /></Grid>
-                                <Grid item xs={12} sm={6}>
-                                    <MuiInput label="六分石 (3/4&quot;) (kg)" name="sixPartsStone" value={inputs.sixPartsStone} onChange={handleInputChange} InputProps={{endAdornment: (<Tooltip title="粗骨材中較大粒徑的部分"><InfoOutlinedIcon color="action" sx={{ cursor: 'pointer' }} /></Tooltip>)}} />
-                                </Grid>
-                                <Grid item xs={12} sm={6}>
-                                    <MuiInput label="三分石 (3/8&quot;) (kg)" name="threePartsStone" value={inputs.threePartsStone} onChange={handleInputChange} InputProps={{endAdornment: (<Tooltip title="粗骨材中較小粒徑的部分"><InfoOutlinedIcon color="action" sx={{ cursor: 'pointer' }} /></Tooltip>)}} />
-                                </Grid>
                             </Grid>
                             <Button variant="contained" color="primary" size="large" fullWidth onClick={calculateStrength} startIcon={<SpeedIcon />} sx={{ mt: 3 }}>預估強度</Button>
                         </Paper>
@@ -212,7 +248,7 @@ export default function ConcreteInverse() {
                          )}
                          <Alert severity="info" sx={{ mt: 2 }}>
                             <AlertTitle>計算假設</AlertTitle>
-                            此預估值已考量粗骨材級配比例與標準安全餘裕 (Overdesign)，並非材料能達到的絕對最大強度。體積校核應接近 1.0 m³。
+                            此預估值已考量減水劑、骨材級配與標準安全餘裕 (Overdesign)，並非材料能達到的絕對最大強度。體積校核應接近 1.0 m³。
                         </Alert>
                     </Grid>
                 </Grid>
