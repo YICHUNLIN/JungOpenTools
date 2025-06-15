@@ -27,4 +27,12 @@ require('./api.math')(context, app, [
         next();
     }
 ]);
+require('./api.ai')(context, app, [
+      cors(),
+      express.json(), 
+      express.urlencoded({ extended: false }), 
+      (req, res, next) => {
+          next();
+      }
+]);
 module.exports = app;
