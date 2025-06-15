@@ -58032,8 +58032,6 @@ export default function QCTest() {
     }, [searchTerm]);
 
     return (
-        <ThemeProvider theme={theme}>
-            <CssBaseline />
             <Container maxWidth="lg" sx={{ py: 4 }}>
                 <header>
                     <Typography variant="h4" component="h1" gutterBottom>
@@ -58076,6 +58074,5 @@ export default function QCTest() {
                     </Table>
                 </TableContainer>
             </Container>
-        </ThemeProvider>
     );
 }
