@@ -13,7 +13,11 @@ import {
     TableHead,
     TableRow,
     Paper,
-    Button
+    Button,
+    useMediaQuery,
+    Box,
+    Stack,
+    Chip
 } from '@mui/material';
 
 // 來自使用者提供的資料集
@@ -57974,19 +57978,59 @@ const theme = createTheme({
     },
 });
 
-// 單一問題列元件
+// 單一問題列/卡片元件
 const QuestionRow = ({ question, index }) => {
     const [showAnswer, setShowAnswer] = useState(false);
+    // 使用 useMediaQuery hook 來偵測螢幕寬度，'md' 以下視為行動裝置
+    const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
+    // 行動裝置視圖：卡片式佈局
+    if (isMobile) {
+        return (
+            <Paper elevation={2} sx={{ p: 2, mb: 2 }}>
+                <Stack spacing={1.5}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" color="text.secondary">#{index + 1}</Typography>
+                        <Chip label={question.course.unit} size="small" color="primary" variant="outlined" />
+                    </Box>
+                    <Typography variant="body1" sx={{ my: 1, lineHeight: 1.6 }}>
+                        {question.question}
+                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mt: 1 }}>
+                        {showAnswer ? (
+                            <Typography
+                                variant="h5"
+                                color="error"
+                                onClick={() => setShowAnswer(false)}
+                                sx={{ cursor: 'pointer', fontWeight: 'bold', p: 1 }}
+                            >
+                                {question.answer}
+                            </Typography>
+                        ) : (
+                            <Button
+                                variant="contained"
+                                onClick={() => setShowAnswer(true)}
+                            >
+                                看答案
+                            </Button>
+                        )}
+                    </Box>
+                </Stack>
+            </Paper>
+        );
+    }
+
+    // 桌面視圖：表格行佈局
     return (
         <TableRow hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
             <TableCell align="center" sx={{ color: 'text.secondary' }}>{index + 1}</TableCell>
+            <TableCell sx={{ color: 'text.secondary' }}>{question.course.unit}</TableCell>
             <TableCell>{question.question}</TableCell>
             <TableCell align="center">
                 {showAnswer ? (
-                    <Typography 
-                        variant="h6" 
-                        color="error" 
+                    <Typography
+                        variant="h6"
+                        color="error"
                         onClick={() => setShowAnswer(false)}
                         sx={{ cursor: 'pointer', fontWeight: 'bold' }}
                     >
@@ -58011,6 +58055,7 @@ const TableHeader = () => (
     <TableHead sx={{ backgroundColor: 'grey.200' }}>
         <TableRow>
             <TableCell align="center" sx={{ fontWeight: 'bold', width: '5%' }}>序號</TableCell>
+            <TableCell sx={{ fontWeight: 'bold', width: '25%' }}>單元</TableCell>
             <TableCell sx={{ fontWeight: 'bold', width: '55%' }}>題目內容</TableCell>
             <TableCell align="center" sx={{ fontWeight: 'bold', width: '15%' }}>答案</TableCell>
         </TableRow>
@@ -58020,6 +58065,7 @@ const TableHeader = () => (
 // 主應用程式元件
 export default function QCTest() {
     const [searchTerm, setSearchTerm] = useState('');
+    const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
     const filteredQuestions = useMemo(() => {
         if (!searchTerm) {
@@ -58032,17 +58078,17 @@ export default function QCTest() {
     }, [searchTerm]);
 
     return (
-            <Container maxWidth="lg" sx={{ py: 4 }}>
+            <Container maxWidth="lg" sx={{ py: isMobile ? 2 : 4 }}>
                 <header>
-                    <Typography variant="h4" component="h1" gutterBottom>
+                    <Typography variant={isMobile ? "h5" : "h4"} component="h1" gutterBottom>
                         公共工程品管班 - 題庫瀏覽器
                     </Typography>
-                    <Typography variant="subtitle1" color="textSecondary" sx={{ mb: 4 }}>
+                    <Typography variant="subtitle1" color="textSecondary" sx={{ mb: 3 }}>
                         輸入關鍵字來搜尋題目或單元。
                     </Typography>
                 </header>
 
-                <Paper elevation={2} sx={{ p: 2, mb: 4, position: 'sticky', top: 16, zIndex: 1100, backgroundColor: 'rgba(255,255,255,0.95)' }}>
+                <Paper elevation={2} sx={{ p: 2, mb: 3, position: 'sticky', top: 16, zIndex: 1100, backgroundColor: 'rgba(255,255,255,0.98)' }}>
                     <TextField
                         fullWidth
                         variant="outlined"
@@ -58054,25 +58100,40 @@ export default function QCTest() {
                         共找到 {filteredQuestions.length} 筆題目。
                     </Typography>
                 </Paper>
-
-                <TableContainer component={Paper} elevation={2}>
-                    <Table stickyHeader aria-label="題庫表格">
-                        <TableHeader />
-                        <TableBody>
-                            {filteredQuestions.length > 0 ? (
-                                filteredQuestions.map((q, index) => (
-                                    <QuestionRow key={q.id} question={q} index={index} />
-                                ))
-                            ) : (
-                                <TableRow>
-                                    <TableCell colSpan={4} align="center" sx={{ py: 5, color: 'text.secondary' }}>
-                                        找不到符合條件的題目。
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
+                
+                {/* 根據螢幕寬度決定渲染表格還是卡片列表 */}
+                {isMobile ? (
+                    <Stack spacing={2}>
+                         {filteredQuestions.length > 0 ? (
+                            filteredQuestions.map((q, index) => (
+                                <QuestionRow key={q.id} question={q} index={index} />
+                            ))
+                        ) : (
+                             <Paper elevation={2} sx={{textAlign:'center', p:5}}>
+                                <Typography color="text.secondary">找不到符合條件的題目。</Typography>
+                             </Paper>
+                        )}
+                    </Stack>
+                ) : (
+                    <TableContainer component={Paper} elevation={2}>
+                        <Table stickyHeader aria-label="題庫表格">
+                            <TableHeader />
+                            <TableBody>
+                                {filteredQuestions.length > 0 ? (
+                                    filteredQuestions.map((q, index) => (
+                                        <QuestionRow key={q.id} question={q} index={index} />
+                                    ))
+                                ) : (
+                                    <TableRow>
+                                        <TableCell colSpan={4} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                                            找不到符合條件的題目。
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                )}
             </Container>
     );
 }
