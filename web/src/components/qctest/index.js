@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import axios from 'axios'
 import {
     createTheme,
     ThemeProvider,
@@ -19,6 +20,7 @@ import {
     Stack,
     Chip
 } from '@mui/material';
+import { useEffect } from 'react';
 
 // 來自使用者提供的資料集
 const questionBankData = [
@@ -57978,9 +57980,17 @@ const theme = createTheme({
     },
 });
 
+const callGemini = (text) => new Promise((resolve, reject) => {
+  const url = `https://t.kmn.tw/api/ai/gemini?q=${text},回答都要用中文`
+  axios.get(url)
+    .then(r => resolve(r.data.reduce((m, d) => [...d.content.parts.reduce((m2, d2) => [d2.text, ...m2], []), ...m], [])))
+    .catch(console.log)
+})
+
 // 單一問題列/卡片元件
 const QuestionRow = ({ question, index }) => {
     const [showAnswer, setShowAnswer] = useState(false);
+    const [aiAnswer, setAIAnswer] = useState("")
     // 使用 useMediaQuery hook 來偵測螢幕寬度，'md' 以下視為行動裝置
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -57998,23 +58008,38 @@ const QuestionRow = ({ question, index }) => {
                     </Typography>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mt: 1 }}>
                         {showAnswer ? (
-                            <Typography
-                                variant="h5"
-                                color="error"
-                                onClick={() => setShowAnswer(false)}
-                                sx={{ cursor: 'pointer', fontWeight: 'bold', p: 1 }}
-                            >
-                                {question.answer}
-                            </Typography>
+                            <>
+                              <Typography
+                                  variant="h5"
+                                  color="error"
+                                  onClick={() => setShowAnswer(false)}
+                                  sx={{ cursor: 'pointer', fontWeight: 'bold', p: 1 }}
+                              >
+                                  {question.answer}
+                              </Typography>
+                            </>
+                            
                         ) : (
                             <Button
                                 variant="contained"
-                                onClick={() => setShowAnswer(true)}
+                                onClick={() => {
+                                  setShowAnswer(true) 
+                                  callGemini(question.question)
+                                    .then(r => {
+                                      setAIAnswer(r)
+                                    })
+                                    .catch(console.log)
+                                }}
                             >
                                 看答案
                             </Button>
                         )}
                     </Box>
+                    {
+                      showAnswer ? <Box>
+                        {`Gemini: ${aiAnswer}`}
+                      </Box> : ''
+                    }
                 </Stack>
             </Paper>
         );
@@ -58022,31 +58047,49 @@ const QuestionRow = ({ question, index }) => {
 
     // 桌面視圖：表格行佈局
     return (
-        <TableRow hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-            <TableCell align="center" sx={{ color: 'text.secondary' }}>{index + 1}</TableCell>
-            <TableCell sx={{ color: 'text.secondary' }}>{question.course.unit}</TableCell>
-            <TableCell>{question.question}</TableCell>
-            <TableCell align="center">
-                {showAnswer ? (
-                    <Typography
-                        variant="h6"
-                        color="error"
-                        onClick={() => setShowAnswer(false)}
-                        sx={{ cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                        {question.answer}
-                    </Typography>
-                ) : (
-                    <Button
-                        variant="contained"
-                        size="small"
-                        onClick={() => setShowAnswer(true)}
-                    >
-                        看答案
-                    </Button>
-                )}
-            </TableCell>
-        </TableRow>
+        <>
+            <TableRow hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+              <TableCell align="center" sx={{ color: 'text.secondary' }}>{index + 1}</TableCell>
+              <TableCell sx={{ color: 'text.secondary' }}>{question.course.unit}</TableCell>
+              <TableCell>{question.question}</TableCell>
+              <TableCell align="center">
+                  {showAnswer ? (<>
+                      <Typography
+                          variant="h6"
+                          color="error"
+                          onClick={() => setShowAnswer(false)}
+                          sx={{ cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                          {question.answer}
+                      </Typography>
+                  </>
+                      
+                  ) : (
+                        <Button
+                            variant="contained"
+                            onClick={() => {
+                              setShowAnswer(true) 
+                              callGemini(question.question)
+                                .then(r => {
+                                  setAIAnswer(r)
+                                })
+                                .catch(console.log)
+                            }}
+                        >
+                          看答案
+                      </Button>
+                  )}
+              </TableCell>
+          </TableRow>
+
+          {
+            showAnswer ? <TableRow >
+              <TableCell colSpan={4}>
+                {`Gemini: ${aiAnswer}`}
+              </TableCell>
+            </TableRow> : ''
+          }
+        </>
     );
 };
 
