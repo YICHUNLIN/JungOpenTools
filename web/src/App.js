@@ -11,6 +11,7 @@ import RoadCrossSectional from './components/RoadCrossSectional';
 import Footer from './footer'
 import Typography from '@mui/material/Typography';
 import RoadCrossSectionalPreProcess from './components/RoadCrossSectionalPreProcess';
+import RoadCrossSectionalPreProcessV2 from './components/RoadCrossSectionalPreProcessV2';
 import Concrete from './components/concrete';
 import AsphaltConcrete from './components/asphaltConcrete';
 import DesignMap from './components/designMap';
@@ -20,6 +21,7 @@ import QCTest from './components/qctest';
 const pages = [
   {name: '座標轉換', to: '/km/gis', route: <Kmgis/>},
   {name: '斷面分析(前置作業,小金路網專用)', to: '/road/crossSectionalPreProcess', route: <RoadCrossSectionalPreProcess/>},
+  {name: '斷面分析(前置作業,小金路網專用)V2', to: '/road/crossSectionalPreProcessV2', route: <RoadCrossSectionalPreProcessV2/>},
   {name: '斷面分析', to: '/road/crossSectional', route: <RoadCrossSectional/>},
   {name: '水泥混凝土配比設計', to: '/concrete/design', route: <Concrete/>},
   {name: '瀝青混凝土配比設計', to: '/ac/design', route: <AsphaltConcrete/>},
