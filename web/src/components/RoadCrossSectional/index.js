@@ -1,10 +1,12 @@
-import React, {useState } from 'react';
+import React, {useEffect, useState } from 'react';
 import { connect } from 'react-redux'
 import Section from './KonvaSection';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { styled } from '@mui/material/styles';
 import { Button } from '@mui/material';
 import { Table, TableBody, TableCell, TableRow, TextField } from '@mui/material';
+import {saveRoadData, getFiles,getFileToShow} from '../../Action/roadData';
+import FileSelect from './fileSelect';
 
 const ToolBtn = ({info, onClick}) => {
     const [enable, setEnable] = useState(false)
@@ -44,6 +46,9 @@ const VisuallyHiddenInput = styled('input')({
     whiteSpace: 'nowrap',
     width: 1,
   });
+
+
+
 const Upload = ({onData, onError}) => {
     return <Button
     component="label"
@@ -62,7 +67,7 @@ const Upload = ({onData, onError}) => {
                 if (ee){
                     try{
                         const d = JSON.parse(ee.target.result)
-                        onData(d)
+                        onData(d, e.target.files[0].name)
                     }catch(e){
                         onError(`File content not allow:  ${e}`)
                     }
@@ -74,17 +79,31 @@ const Upload = ({onData, onError}) => {
 </Button>
 }
 const RoadCrossSectional = ({}) => {
-    const [data, setData] = useState([])
+    const [data, setData] = useState([]);
     const [error, setError] = useState("");
     const [funcs, setFuncs] = useState([]);
     const [scale, setScale] = useState({x: 70, y: 70});
     const [h, setH] = useState(0)
     const [lslope, setLSlope] = useState(0)
     const [rslope, setRSlope] = useState(0)
+    const [files, setfiles] = useState([]);
+    useEffect(() => {
+        getFiles()
+            .then(setfiles)
+            .catch(console.log)
+    }, [])
     return <>
         <h3>道路斷面分析</h3>
-        <Upload onData={setData} onError={setError}/>
+        <Upload onData={(d, name) => {
+            setData(d)
+            saveRoadData(d, name)
+        }} onError={setError}/>
         <p/>
+        <FileSelect files={files} onSelect={s => {
+            getFileToShow(s)
+                .then(setData)
+                .catch(console.log)
+        }}/>
         <ToolTips onClick={(e) => {
             setFuncs(funcs.includes(e) ? funcs.filter(f => f !== e) : [...funcs, e])
         }}/>
