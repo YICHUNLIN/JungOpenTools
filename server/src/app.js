@@ -35,4 +35,12 @@ require('./api.ai')(context, app, [
           next();
       }
 ]);
+require('./api.road')(context, app, [
+      cors(),
+      express.json(), 
+      express.urlencoded({ extended: false }), 
+      (req, res, next) => {
+          next();
+      }
+]);
 module.exports = app;

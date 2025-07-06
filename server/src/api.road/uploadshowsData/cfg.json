@@ -1,0 +1,7 @@
+{
+    "name":"/uploadshowsdata",
+    "method": "post",
+    "auth": false,
+    "desc": "上傳要顯示的資料,body",
+    "index": "index.js"
+}

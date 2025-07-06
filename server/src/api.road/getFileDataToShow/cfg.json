@@ -1,0 +1,7 @@
+{
+    "name":"/file",
+    "method": "get",
+    "auth": false,
+    "desc": "取得要顯示的資料檔案內容?fn",
+    "index": "index.js"
+}
