@@ -20,11 +20,14 @@ const SlopeAnalysis = ({basePoints, mainOffset, scale, offset, centerH}) => {
 
     const shows = () => {
         let h = points[zeroIndex][1];
+        console.log(points)
         const ps = [
                         [trainX(points[0][0]), trainY(points[0][1])],
                         [trainX(0), trainY(h)],
                         [trainX(points[points.length - 1][0]), trainY(points[points.length - 1][1])]
                     ]
+        const slopeL = (points[0][1] - points[zeroIndex][1]) / points[0][0];
+        const slopeR = (points[zeroIndex][1] - points[points.length - 1][1]) / points[points.length - 1][0];
         return <>
             {
                 ps.map(([x, y], i) => <Circle key={`slope_point_${i}`} 
@@ -47,7 +50,7 @@ const SlopeAnalysis = ({basePoints, mainOffset, scale, offset, centerH}) => {
             <Text
                 x={(ps[0][0] + ps[1][0]) / 2}
                 y={baseY+10}
-                text={`L.Slope=${(((ps[0][1] - ps[1][1]) / ps[0][0])* 100).toFixed(3) } %`}
+                text={`L.Slope=${(slopeL* 100).toFixed(3) } %`}
                 fontSize={10}
                 fontFamily="Calibri"
                 fill={"red"}
@@ -55,7 +58,7 @@ const SlopeAnalysis = ({basePoints, mainOffset, scale, offset, centerH}) => {
             <Text
                 x={(ps[1][0] + ps[2][0]) / 2}
                 y={baseY + 10}
-                text={`R.Slope=${(((ps[2][1] - ps[1][1]) / ps[2][0]) * 100).toFixed(3)} %`}
+                text={`R.Slope=${(slopeR * 100).toFixed(3)} %`}
                 fontSize={10}
                 fontFamily="Calibri"
                 fill={"red"}

@@ -17,6 +17,7 @@ import AsphaltConcrete from './components/asphaltConcrete';
 import DesignMap from './components/designMap';
 import ConcreteInverse from './components/concreteInverse';
 import QCTest from './components/qctest';
+import RoadCrossSectionalPreProcessV3 from './components/RoadCrossSectionalPreProcessV3';
 
 const pages = [
   {name: '座標轉換', to: '/km/gis', route: <Kmgis/>},
@@ -28,6 +29,7 @@ const pages = [
   {name: '咖啡廳位置配置', to: '/map/design', route: <DesignMap/>},
   {name: '混凝土反向設計', to: '/concrete/inverse', route: <ConcreteInverse/>},
   {name: '品管考試', to: '/qc', route: <QCTest/>},
+  {name: "斷面分析(前置作業,環西專用)", route: <RoadCrossSectionalPreProcessV3/>, to: "/road/crossSectionalPreProcessV3"},
 ];
 
 const App = ({}) => {
