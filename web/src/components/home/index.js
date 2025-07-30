@@ -9,6 +9,7 @@ const apps = [
     {name: "斷面分析(前置作業,小金路網專用)", desc: "excel->Json", to: "/road/crossSectionalPreProcess"},
     {name: "斷面分析(前置作業,小金路網專用)V2", desc: "excel->Json", to: "/road/crossSectionalPreProcessV2"},
     {name: "斷面分析(前置作業,環西專用)", desc: "excel->Json", to: "/road/crossSectionalPreProcessV3"},
+    {name: "斷面分析(假設比較)", desc: "道路斷面分析(完成面比較)", to: "/road/crossSectionalCompare"},
     {name: "斷面分析", desc: "道路斷面分析", to: "/road/crossSectional"}
 ]
 

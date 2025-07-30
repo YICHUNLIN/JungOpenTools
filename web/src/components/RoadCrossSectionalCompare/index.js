@@ -1,0 +1,170 @@
+import React, {useEffect, useState } from 'react';
+import { connect } from 'react-redux'
+import Section from './KonvaSection';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import { styled } from '@mui/material/styles';
+import { Button } from '@mui/material';
+import { Table, TableBody, TableCell, TableRow, TextField } from '@mui/material';
+import {saveRoadData, getFiles,getFileToShow} from '../../Action/roadData';
+import FileSelect from './fileSelect';
+
+const ToolBtn = ({info, onClick}) => {
+    const [enable, setEnable] = useState(false)
+    return <Button 
+            color={enable ? "success" : 'primary'}
+            onClick={e => {
+                onClick(info.id);
+                setEnable(!enable)
+            }}>{info.name}</Button>
+}
+
+const ToolTips = ({onClick}) => {
+    const [funcs] = useState([
+        {name: "圖例", id: "SHOW_LEGEND"},
+        {name: "其他圖層", id: "SHOW_OTHER"},
+        {name: "滑鼠座標", id: "SHOW_MOUSE_LOCATION"},
+        {name: "網格", id: "SHOW_GRIDS"}, 
+        {name: "中心線", id: "SHOW_CL"},
+        {name: "點位資訊", id: "SHOW_POINT_TEXT"},
+        {name: "鋪築調整", id: "SHOW_LEVELING"},
+        {name: "洩水分析", id: "SHOW_SLOPE_ANALYSIS"},
+        {name: "完成面調整(寬度)", id: "SHOW_FINISHED_DESIGN"},
+        {name: "倍率", id: "SHOW_RATIO"}])
+    return <>
+        {
+            funcs.map((f, i) => <ToolBtn key={`tool_tips_${i}`} info={f} onClick={onClick}/>)
+        }
+    </>
+}
+const VisuallyHiddenInput = styled('input')({
+    clip: 'rect(0 0 0 0)',
+    clipPath: 'inset(50%)',
+    height: 1,
+    overflow: 'hidden',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    whiteSpace: 'nowrap',
+    width: 1,
+  });
+
+
+
+const Upload = ({onData, onError}) => {
+    return <Button
+    component="label"
+    role={undefined}
+    variant="contained"
+    tabIndex={-1}
+    startIcon={<CloudUploadIcon />}
+    >
+    上傳檔案(.json Only)
+    <VisuallyHiddenInput
+        type="file"
+        accept=".json,application/json"
+        onChange={(e) =>{
+            var reader = new FileReader();
+            reader.onload = function (ee) {
+                if (ee){
+                    try{
+                        const d = JSON.parse(ee.target.result)
+                        onData(d, e.target.files[0].name)
+                    }catch(e){
+                        onError(`File content not allow:  ${e}`)
+                    }
+                }
+            };
+            reader.readAsText(e.target.files[0]);
+        }}
+    />
+</Button>
+}
+const RoadCrossSectionalCompare = ({}) => {
+    const [data, setData] = useState([]);
+    const [error, setError] = useState("");
+    const [funcs, setFuncs] = useState([]);
+    const [scale, setScale] = useState({x: 70, y: 70});
+    const [h, setH] = useState(0)
+    const [lslope, setLSlope] = useState(0)
+    const [rslope, setRSlope] = useState(0)
+    const [lwidth, setLWidth] = useState(0);
+    const [rwidth, setRWidth] = useState(0);
+    const [files, setfiles] = useState([]);
+    useEffect(() => {
+        getFiles()
+            .then(setfiles)
+            .catch(console.log)
+    }, [])
+    return <>
+        <h3>道路斷面分析(compare)</h3>
+        <Upload onData={(d, name) => {
+            setData(d)
+            saveRoadData(d, `(Compare)${name}`)
+        }} onError={setError}/>
+        <p/>
+        <FileSelect files={files} onSelect={s => {
+            getFileToShow(s)
+                .then(setData)
+                .catch(console.log)
+        }}/>
+        <ToolTips onClick={(e) => {
+            console.log(e)
+            setFuncs(funcs.includes(e) ? funcs.filter(f => f !== e) : [...funcs, e])
+        }}/>
+        <p/>
+        <TextField 
+            label="X軸比例"
+            variant="standard" 
+            value={scale.x}
+            type='number' onChange={e => setScale({...scale, x: e.target.value})}/> 
+        <TextField 
+            label="Y軸比例"
+            variant="standard" 
+            value={scale.y}
+            type='number' onChange={e => setScale({...scale, y: e.target.value})}/> 
+        <TextField 
+            label="統一高程"
+            variant="standard" 
+            type='number' onChange={e => setH(e.target.value / 100)}/> 
+        <TextField 
+            label="統一左側高程%"
+            variant="standard" 
+            type='number' onChange={e => setLSlope(e.target.value / 100)}/> 
+        <TextField 
+            label="統一右側高程%"
+            variant="standard" 
+            type='number' onChange={e => setRSlope(e.target.value / 100)}/> 
+        <TextField 
+            label="統一左側道路寬"
+            variant="standard" 
+            type='number' onChange={e => setLWidth(e.target.value)}/> 
+        <TextField 
+            label="統一右側道路寬"
+            variant="standard" 
+            type='number' onChange={e => setRWidth(e.target.value)}/> 
+        <p/>
+        {
+            data.map((d, i) => <Section 
+                                    key={`section_${i}`}
+                                    toolConfig={funcs.reduce((map, f) => ({[f]: true, ...map}), {})}
+                                    section={d} 
+                                    scale={scale}
+                                    h={h}
+                                    lw={lwidth}
+                                    rw={rwidth}
+                                    ls={lslope}
+                                    rs={rslope}
+                                    width={1400} 
+                                    height={300}/>)
+        }
+        {
+            error
+        }
+    </>
+}
+
+
+const mapStateToProps = (state, ownProps) => {
+    return {  }
+}
+export default connect(mapStateToProps, {})(RoadCrossSectionalCompare) 

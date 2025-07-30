@@ -1,0 +1,249 @@
+import React, { useRef, useEffect, useState } from 'react';
+import { Stage, Layer, Arc, Text, Rect, Line, Group } from 'react-konva';
+import PolyLine from './PolyLine';
+import SlopeAnalysis from './SlopeAnalysis'
+import {indexOfMax, indexOfMin} from '../../Action/ext'
+import Leveling from './Leveling';
+import { Button, TextField } from '@mui/material';
+import Finished from './finished';
+
+// 繪圖板基礎層
+const BaseLayer = ({name, width, height, mousePos, showGrid,toolConfig}) => {
+    const [grid] = useState({x: Math.floor(height/20), y: Math.floor(width/20)})
+    const genGrids = () => {
+        const lines = [];
+        for (var i = 0; i < grid.x; i++){
+            lines.push(<Line key={`grid_x_${i}`}
+                        points={[0,i*20, width, i*20]}
+                        stroke={"grey"}
+                        strokeWidth={1}  
+                        lineCap="round"
+                        lineJoin="round"
+                        y={0}
+                    />)
+        }
+        for(var i = 0; i < grid.y; i++){
+            lines.push(<Line key={`grid_y_${i}`}
+                        points={[i*20,0, i*20, height]}
+                        stroke={"grey"}
+                        strokeWidth={1}  
+                        lineCap="round"
+                        lineJoin="round"
+                        y={0}
+                    />)
+        }
+        return lines;
+    }
+    return <Layer>
+        {
+            toolConfig.hasOwnProperty("SHOW_GRIDS") ? genGrids() : ""
+        }
+        <Text
+            x={10}
+            y={15}
+            text={name}
+            fontSize={20}
+            fontFamily="Calibri"
+            fill="green"
+        />
+        {
+            toolConfig.hasOwnProperty("SHOW_MOUSE_LOCATION") ? <Text
+                x={10}
+                y={height - 20}
+                text={`(${mousePos.x}, ${mousePos.y})`}
+                fontSize={12}
+                fontFamily="Calibri"
+                fill="red"
+            /> : ''
+        }
+        
+        <Rect
+            x={0}
+            y={0}
+            width={width}
+            height={height}
+            stroke="black"
+            strokeWidth={2}
+            />
+    </Layer>
+}
+
+
+const Section = ({section, width, height, scale, toolConfig, h, ls, rs,lw,rw}) => {
+    const stageRef = useRef(null);
+    const [mousePos, setMousePos] = useState({x: 0, y: 0})
+    const [offset] = useState({x:250, y: 50});
+    const [mainOffset,setMainOffset] = useState({minX: 0, maxY: 0}) // 所有曲線的位移
+    const [CL,setCL] = useState({x: 0, y: 0})
+    const [levelingCenterH, setLevelingCenterH] = useState(0)
+    const [lslope, setLSlope] = useState(0);
+    const [rslope, setRSlope] = useState(0);
+    const [lwidth, setLWidth] = useState(0);
+    const [rwidth, setRWidth] = useState(0)
+    // 計算位移
+    useEffect(() => {
+        if (section.layers.length > 0){
+            const p = section.layers[0].points.filter(p => p[0]===0);
+            setCL({...CL,y: p[1]})
+        }
+        const minX = section.layers.filter(l => l.type === "BASE").reduce((min, d) => {
+            const s = d.points.reduce((min, p) => p[0] < min ? p[0] : min, 10000);
+            return s < min ? s : min
+        }, 10000);
+        const maxY = section.layers.filter(l => l.type === "BASE").reduce((max, d) => {
+            const s = d.points.reduce((max, p) => p[1] > max ? p[1] : max, -10000);
+            return s < max ? s : max;
+        }, 10000);
+        setMainOffset({minX, maxY})
+    }, [section])
+    const handleExport = () => {
+        const dataURL = stageRef.current.toDataURL({
+            pixelRatio: 2 // double resolution
+        });
+        
+        const link = document.createElement('a');
+        link.download = `${section.name}.png`;
+        link.href = dataURL;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    if (section.layers.filter(l => l.type === "BASE").length > 1) return <p>{section.name} BASE層 只能有一個</p>
+    if (section.layers.filter(l => l.type === "LEVELING").length > 1) return <p>{section.name} LEVELING層 只能有一個</p>
+    return <>
+        {
+            toolConfig.hasOwnProperty("SHOW_LEVELING") ? 
+            <>
+                <TextField 
+                    label="中心高,cm公分"
+                    variant="standard" 
+                    type='number'
+                    onChange={e => setLevelingCenterH(e.target.value / 100)}
+                    />
+                <TextField 
+                    label="左側坡度%"
+                    variant="standard" 
+                    type='number'
+                    onChange={e => setLSlope(e.target.value / 100)}
+                    />
+                
+                <TextField 
+                    label="右側坡度%"
+                    variant="standard" 
+                    type='number'
+                    onChange={e => setRSlope(e.target.value / 100)}
+                    />
+            </> : ''
+        }
+        <Button onClick={handleExport}>下載圖片</Button>
+        
+        <Stage width={width} height={height} ref={stageRef}
+            onMouseMove={e => setMousePos({x: e.evt.clientX , y: e.evt.clientY })}>
+                <BaseLayer 
+                    width={width} 
+                    height={height} 
+                    name={section.name} 
+                    toolConfig={toolConfig}
+                    mousePos={mousePos}/>
+                <Layer>
+                    {
+                        section.layers.filter(l => l.type === "BASE").map((s, i) => <PolyLine key={`polyline_${i}`}
+                            data={s}
+                            mainOffset={mainOffset}
+                            lineColor={s.color}
+                            textColor={s.color}
+                            offset={offset}
+                            scale={scale}
+                            config={{
+                                showText: toolConfig.hasOwnProperty("SHOW_POINT_TEXT"),
+                                showCL: toolConfig.hasOwnProperty("SHOW_CL") && (i === 0)
+                                }}/>
+                        )
+                    }
+                    {
+
+                        toolConfig.hasOwnProperty("SHOW_OTHER") ?
+                        section.layers.filter(l => l.type === "NORMAL").map((s, i) => <PolyLine key={`polyline_normal_${i}`}
+                            data={s}
+                            mainOffset={mainOffset}
+                            lineColor={s.color}
+                            textColor={s.color}
+                            offset={offset}
+                            scale={scale}
+                            config={{
+                                showText: toolConfig.hasOwnProperty("SHOW_POINT_TEXT"),
+                                showCL: toolConfig.hasOwnProperty("SHOW_CL") && (i === 0)
+                            }}/>
+                        ): ""
+                    }
+                    {
+                        toolConfig.hasOwnProperty("SHOW_SLOPE_ANALYSIS") ?
+                        section.layers.filter(l => l.type === "BASE")
+                            .map((s, i) => <SlopeAnalysis key={`slope_analysis_${i}`}
+                                basePoints={s.points}
+                                mainOffset={mainOffset}
+                                offset={offset}
+                                scale={scale}/> ) : ''
+                    }
+                    {
+                        toolConfig.hasOwnProperty("SHOW_LEVELING") ?
+                        section.layers.filter(l => l.type === "LEVELING")
+                            .map((s, i) => <Leveling key={`leveling_with_base_${i}`} 
+                                centerH={levelingCenterH + h}
+                                basePoints={section.layers.filter(l => l.type === "BASE")[0].points}
+                                data={s} 
+                                lslope={lslope + ls}
+                                rslope={rslope + rs}
+                                mainOffset={mainOffset}
+                                offset={offset}
+                                scale={scale}/>) : ""
+                    }
+                    {
+                        toolConfig.hasOwnProperty("SHOW_FINISHED_DESIGN")?
+                            section.layers.filter(l => l.type === "BASE")
+                                .map((s, i) => <Finished  key={`finished_with_base_${i}`}
+                                    basePoints={s.points}
+                                    data={s}
+                                    centerH={levelingCenterH + h}
+                                    mainOffset={mainOffset}
+                                    offset={offset}
+                                    lwidth={lwidth + lw}
+                                    rwidth={rwidth + rw}
+                                    lslope={lslope + ls}
+                                    rslope={rslope + rs}
+                                    scale={scale}/>) : ""
+
+                    }
+                </Layer>
+                <Layer >
+                    {
+                        toolConfig.hasOwnProperty("SHOW_LEGEND") ? 
+                            // 圖例
+                            section.layers.map((s, i) => 
+                                <Text key={`legend_${i}`}
+                                x={10}
+                                y={50+ i * 20}
+                                text={s.name}
+                                fontSize={12}
+                                fontFamily="Calibri"
+                                fill={s.color ?? 'green'}/>
+                            ) : ""
+                    }
+                    {
+                        toolConfig.hasOwnProperty("SHOW_RATIO") 
+                            ? <Text x={width-170} y={height-20}
+                                text={`Scale:(${scale.x},${scale.y});Offset:(${offset.x},${offset.y})`}
+                                fontSize={12}
+                                fontFamily="Calibri"
+                                fill={'red'}/> 
+                            : ''
+                    }
+                    
+                </Layer>     
+        </Stage>
+    
+    </>
+}
+
+export default Section
