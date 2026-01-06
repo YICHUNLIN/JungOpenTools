@@ -38,7 +38,7 @@ const RoadCrossSectionalPreProcess = ({}) => {
         const o2 = combineMileAndH(step2.d, step2.h);
         let r = [];
         if (Object.keys(o2).length > 0) {
-            Object.keys(o2).map(k => {
+            r = Object.keys(o2).map(k => {
                     const md = {
                         name: k,
                         layers: [

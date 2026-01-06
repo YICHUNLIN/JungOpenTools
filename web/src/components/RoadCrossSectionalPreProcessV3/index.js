@@ -38,7 +38,7 @@ const RoadCrossSectionalPreProcess = ({}) => {
         const o2 = combineMileAndH(step2.d, step2.h);
         let r = [];
         if (Object.keys(o2).length > 0) {
-            Object.keys(o2).map(k => {
+            r = Object.keys(o2).map(k => {
                     const md = {
                         name: k,
                         layers: [
@@ -51,15 +51,14 @@ const RoadCrossSectionalPreProcess = ({}) => {
                             {
                                 name: "假設完成面",
                                 type: "LEVELING",
-                                lslope:0.015,
-                                rslope:0.015,
+                                lslope:0.0,
+                                rslope:0.0,
                                 llength:Math.abs(o2[k][0][0]),
                                 rlength:Math.abs(o2[k][o2[k].length-1][0]),
                                 color: "blue"
                             }
                         ]
                     }
-                    console.log(k, o1.hasOwnProperty(k))
                     if (o1.hasOwnProperty(k)) 
                         md.layers = [...md.layers, {
                             name: "刨除前",
@@ -85,8 +84,8 @@ const RoadCrossSectionalPreProcess = ({}) => {
                             {
                                 name: "假設完成面",
                                 type: "LEVELING",
-                                lslope:0.015,
-                                rslope:0.015,
+                                lslope:0.0,
+                                rslope:0.0,
                                 llength:Math.abs(o1[k][0][0]),
                                 rlength:Math.abs(o1[k][o1[k].length-1][0]),
                                 color: "blue"
@@ -95,7 +94,6 @@ const RoadCrossSectionalPreProcess = ({}) => {
                     }
                 })
         }
-
 
         const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(
           JSON.stringify(r)
