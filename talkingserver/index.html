@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>Socket.IO 通訊中樞</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; }
+        .panel { border: 1px solid #ccc; padding: 10px; margin: 10px; width: 45%; }
+        #online-users { list-style-type: none; padding: 0; }
+        #online-users li { padding: 5px; cursor: pointer; border: 1px solid #ddd; margin-bottom: 5px; }
+        #online-users li:hover { background-color: #f0f0f0; }
+        #chat-area .message { margin-bottom: 5px; }
+        #chat-area .message .sender { font-weight: bold; }
+        #chat-area .system { color: gray; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <div class="panel">
+        <h2>控制面板</h2>
+        <div>
+            <input id="userId" type="text" placeholder="輸入你的使用者名稱">
+            <button onclick="register()">登入</button>
+        </div>
+        <hr>
+        <div>
+            <input id="roomName" type="text" placeholder="輸入群組房名">
+            <button onclick="joinGroupRoom()">加入群組</button>
+        </div>
+        <hr>
+        <h4>線上使用者 (點擊私訊)</h4>
+        <ul id="online-users"></ul>
+    </div>
+
+    <div class="panel">
+        <h2 id="chat-title">訊息區</h2>
+        <div id="chat-area" style="height: 300px; overflow-y: scroll; border: 1px solid #eee; padding: 5px;"></div>
+        <input id="messageInput" type="text" style="width: 80%;">
+        <button onclick="sendMessage()">發送</button>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        const socket = io("http://localhost:3001");
+
+        let currentUserId = '';
+        // 'group' 或 'private'
+        let chatMode = ''; 
+        // 房名或私訊對象ID
+        let currentTarget = ''; 
+
+        // DOM Elements
+        const chatTitle = document.getElementById('chat-title');
+        const chatArea = document.getElementById('chat-area');
+        const onlineUsersList = document.getElementById('online-users');
+
+        function register() {
+            const userIdInput = document.getElementById('userId');
+            currentUserId = userIdInput.value.trim();
+            if (currentUserId) {
+                socket.emit('register', currentUserId);
+                userIdInput.disabled = true;
+                document.querySelector('button[onclick="register()"]').disabled = true;
+            }
+        }
+
+        function joinGroupRoom() {
+            const roomNameInput = document.getElementById('roomName');
+            const roomName = roomNameInput.value.trim();
+            if (roomName) {
+                socket.emit('joinGroupRoom', roomName);
+                chatMode = 'group';
+                currentTarget = roomName;
+                chatTitle.innerText = `群組房間: ${roomName}`;
+                appendMessage({ sender: '系統', message: `你已加入房間 ${roomName}`, isSystem: true });
+            }
+        }
+
+        function selectPrivateChat(recipientId) {
+            if (recipientId === currentUserId) {
+                alert("不能跟自己聊天！");
+                return;
+            }
+            chatMode = 'private';
+            currentTarget = recipientId;
+            chatTitle.innerText = `與 ${recipientId} 的私訊`;
+        }
+        
+        function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value;
+            if (!message || !chatMode || !currentTarget) {
+                alert('請先登入、選擇聊天對象並輸入訊息！');
+                return;
+            }
+
+            if (chatMode === 'group') {
+                socket.emit('groupMessage', { roomName: currentTarget, message });
+            } else if (chatMode === 'private') {
+                socket.emit('privateMessage', { recipientId: currentTarget, message });
+            }
+            
+            appendMessage({ sender: '我', message });
+            messageInput.value = '';
+        }
+
+        function appendMessage({ sender, message, isSystem = false }) {
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add('message');
+            if (isSystem) msgDiv.classList.add('system');
+            msgDiv.innerHTML = `<span class="sender">${sender}:</span> ${message}`;
+            chatArea.appendChild(msgDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        // --- Socket Event Listeners ---
+
+        socket.on('updateUserList', (users) => {
+            onlineUsersList.innerHTML = '';
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.textContent = user + (user === currentUserId ? ' (我)' : '');
+                if (user !== currentUserId) {
+                    li.onclick = () => selectPrivateChat(user);
+                }
+                onlineUsersList.appendChild(li);
+            });
+        });
+
+        socket.on('groupMessage', ({ sender, message }) => {
+            appendMessage({ sender, message });
+        });
+
+        socket.on('privateMessage', ({ sender, message }) => {
+            // 如果當前正在與此人聊天，則顯示訊息
+            if (chatMode === 'private' && currentTarget === sender) {
+                 appendMessage({ sender, message });
+            } else {
+                // 否則可以做一個未讀訊息提示
+                alert(`收到來自 ${sender} 的新訊息: ${message}`);
+            }
+        });
+        
+        socket.on('systemNotification', ({ message }) => {
+            appendMessage({ sender: '系統通知', message, isSystem: true });
+        });
+    </script>
+</body>
+</html>

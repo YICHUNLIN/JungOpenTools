@@ -1,0 +1,13 @@
+{
+  "name": "socketio-chat-hub",
+  "version": "1.0.0",
+  "description": "一個使用 Socket.IO 建立的，支援群組房間與一對一私訊的即時通訊中樞。",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}

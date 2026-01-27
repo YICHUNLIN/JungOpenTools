@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>極速打字 (Speed Typer)</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-primary: #e0e0e0;
+            --text-secondary: #aaaaaa;
+            --accent-color: #00ff88;
+            --error-color: #ff4444;
+            --score-color: #ffd700; /* 金色用於分數 */
+            --highlight-bg: #333333;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            flex-direction: column;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 15px;
+            width: 95%;
+            max-width: 900px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            border: 1px solid #333;
+        }
+
+        h1 {
+            margin-bottom: 1.5rem;
+            color: var(--accent-color);
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+            font-size: 2rem;
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 2rem;
+            background-color: #252525;
+            padding: 1rem;
+            border-radius: 8px;
+            font-weight: bold;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 80px;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .timer { color: var(--accent-color); }
+        .errors { color: var(--error-color); }
+        .score { color: var(--score-color); text-shadow: 0 0 5px rgba(255, 215, 0, 0.3); }
+
+        .quote-display {
+            font-size: 1.5rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+            text-align: left;
+            min-height: 100px;
+            word-break: break-word;
+            position: relative;
+        }
+
+        .quote-display span {
+            position: relative;
+            color: var(--text-secondary);
+            transition: color 0.1s;
+        }
+
+        .quote-display span.correct {
+            color: var(--accent-color);
+        }
+
+        .quote-display span.incorrect {
+            color: var(--error-color);
+            text-decoration: underline;
+            background-color: rgba(255, 68, 68, 0.1);
+        }
+        
+        .quote-display span.current {
+            border-left: 2px solid var(--accent-color);
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            50% { border-color: transparent; }
+        }
+
+        .quote-input {
+            background-color: transparent;
+            border: 2px solid #444;
+            border-radius: 8px;
+            color: white;
+            font-size: 1.2rem;
+            padding: 1rem;
+            width: 100%;
+            height: 8rem;
+            resize: none;
+            outline: none;
+            transition: border-color 0.3s;
+            opacity: 1;
+        }
+
+        .quote-input:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
+        }
+
+        .refresh-btn {
+            background-color: transparent;
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 1rem;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background-color: var(--accent-color);
+            color: black;
+        }
+
+        .description {
+            margin-top: 20px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>&lt;Speed Typer /&gt;</h1>
+        
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-label">得分 (Score)</span>
+                <span class="stat-value score" id="score">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">錯誤單字 (Word Errors)</span>
+                <span class="stat-value errors" id="errors">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">時間 (Time)</span>
+                <span class="stat-value timer" id="timer">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">速度 (WPM)</span>
+                <span class="stat-value" id="wpm">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">準確度 (Accuracy)</span>
+                <span class="stat-value" id="accuracy">100%</span>
+            </div>
+        </div>
+
+        <div class="quote-display" id="quoteDisplay"></div>
+
+        <textarea class="quote-input" id="quoteInput" placeholder="點擊這裡開始打字..." autofocus></textarea>
+        
+        <button class="refresh-btn" onclick="renderNewQuote()">⟳ 換一句 (Restart)</button>
+        
+        <p class="description">計分規則：每打對一個單字 +10 分，單字拼錯 -5 分 (以空白鍵或結尾判定)。</p>
+    </div>
+
+    <script>
+        const QUOTES = [
+            "The quick brown fox jumps over the lazy dog.",
+            "Talk is cheap. Show me the code.",
+            "Programs must be written for people to read, and only incidentally for machines to execute.",
+            "Always code as if the guy who ends up maintaining your code will be a violent psychopath who knows where you live.",
+            "Any fool can write code that a computer can understand. Good programmers write code that humans can understand.",
+            "Truth can only be found in one place: the code.",
+            "Optimism is an occupational hazard of programming: feedback is the treatment.",
+            "Simplicity is the soul of efficiency.",
+            "Before software can be reusable it first has to be usable.",
+            "Make it work, make it right, make it fast.",
+            "It's not a bug, it's a feature.",
+            "Hello, World!",
+            "I have not failed. I've just found 10,000 ways that won't work.",
+            "Code never lies, comments sometimes do.",
+            "Java is to JavaScript what car is to Carpet.",
+            "First, solve the problem. Then, write the code.",
+            "Experience is the name everyone gives to their mistakes.",
+            "In order to be irreplaceable, one must always be different.",
+            "Knowledge is power.",
+            "Time is money, friend.",
+            "Pack my box with five dozen liquor jugs.",
+            "The five boxing wizards jump quickly.",
+            "How vexingly quick daft zebras jump!",
+            "Bright vixens jump; dozy fowl quack.",
+            "Sphinx of black quartz, judge my vow.",
+            "Two driven jocks help fax my big quiz.",
+            "Five quacking zephyrs jolt my wax bed.",
+            "The jay, pig, fox, zebra, and my wolves quack!",
+            "Blowzy night-frumps vex'd Jack Q.",
+            "A wizard's job is to vex chumps quickly in fog.",
+            "There are 10 types of people in the world: those who understand binary, and those who don't.",
+            "If at first you don't succeed, call it version 1.0.",
+            "Real programmers count from zero.",
+            "A computer once beat me at chess, but it was no match for me at kick boxing.",
+            "Hardware: The parts of a computer system that can be kicked.",
+            "Software matches the hardware.",
+            "Debugging is like being the detective in a crime movie where you are also the murderer.",
+            "One man's crappy software is another man's full time job.",
+            "Measuring programming progress by lines of code is like measuring aircraft building progress by weight.",
+            "Computers are fast; developers keep them slow.",
+            "To be or not to be, that is the question.",
+            "All that glitters is not gold.",
+            "A journey of a thousand miles begins with a single step.",
+            "Actions speak louder than words.",
+            "Better late than never.",
+            "Birds of a feather flock together.",
+            "Cleanliness is next to godliness.",
+            "Don't count your chickens before they hatch.",
+            "Don't put all your eggs in one basket.",
+            "Every cloud has a silver lining.",
+            "Fortune favors the bold.",
+            "Good things come to those who wait.",
+            "Honesty is the best policy.",
+            "Hope for the best, prepare for the worst.",
+            "If it ain't broke, don't fix it.",
+            "Keep your friends close and your enemies closer.",
+            "Laughter is the best medicine.",
+            "Let sleeping dogs lie.",
+            "Life is what happens when you're busy making other plans.",
+            "Necessity is the mother of invention.",
+            "No pain, no gain.",
+            "Practice makes perfect.",
+            "Rome was not built in a day.",
+            "The early bird catches the worm.",
+            "The grass is always greener on the other side.",
+            "The pen is mightier than the sword.",
+            "There is no place like home.",
+            "Time waits for no man.",
+            "Two heads are better than one.",
+            "When in Rome, do as the Romans do.",
+            "Where there's a will, there's a way.",
+            "You can't judge a book by its cover.",
+            "You reap what you sow.",
+            "Stay hungry, stay foolish.",
+            "Winter is coming.",
+            "May the Force be with you.",
+            "Just keep swimming.",
+            "Houston, we have a problem.",
+            "I'll be back.",
+            "Elemental, my dear Watson.",
+            "She sells seashells by the seashore.",
+            "Peter Piper picked a peck of pickled peppers.",
+            "How much wood would a woodchuck chuck if a woodchuck could chuck wood?",
+            "Fuzzy Wuzzy was a bear. Fuzzy Wuzzy had no hair. Fuzzy Wuzzy wasn't fuzzy, was he?",
+            "I scream, you scream, we all scream for ice cream.",
+            "I saw Susie sitting in a shoeshine shop.",
+            "Can you can a can as a canner can can a can?",
+            "I wish to wash my Irish wristwatch.",
+            "Near an ear, a nearer ear, a nearly eerie ear.",
+            "Tom threw Tim three thumbtacks.",
+            "He threw three free throws.",
+            "Nine nice night nurses nursing nicely.",
+            "So, this is how liberty dies. With thunderous applause.",
+            "War does not determine who is right - only who is left.",
+            "We can easily forgive a child who is afraid of the dark; the real tragedy of life is when men are afraid of the light.",
+            "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+            "Believe you can and you're halfway there.",
+            "Do what you can, with what you have, where you are.",
+            "It does not matter how slowly you go as long as you do not stop.",
+            "Everything you've ever wanted is on the other side of fear."
+        ];
+
+        const quoteDisplayElement = document.getElementById('quoteDisplay');
+        const quoteInputElement = document.getElementById('quoteInput');
+        const timerElement = document.getElementById('timer');
+        const wpmElement = document.getElementById('wpm');
+        const accuracyElement = document.getElementById('accuracy');
+        const scoreElement = document.getElementById('score');
+        const errorsElement = document.getElementById('errors');
+
+        let timer;
+        let isTimerStarted = false;
+        let startTime;
+        let currentQuoteLength = 0;
+        let currentQuoteText = "";
+        
+        // 狀態變數
+        let totalScore = 0; // 累積總分
+        let roundScore = 0; // 當前句子的分數（用於即時計算）
+
+        // 監聽輸入事件
+        quoteInputElement.addEventListener('input', () => {
+            const arrayQuote = quoteDisplayElement.querySelectorAll('span');
+            const inputValue = quoteInputElement.value;
+            const arrayValue = inputValue.split('');
+            const currentLength = inputValue.length;
+
+            // 啟動計時器 (第一次按鍵時)
+            if (!isTimerStarted && currentLength > 0) {
+                startTimer();
+                isTimerStarted = true;
+            }
+
+            // === 新版單字計分邏輯 ===
+            calculateWordScore(inputValue);
+
+            // === 視覺回饋邏輯 (保持字元級別的紅綠色，方便玩家修正) ===
+            let correct = true;
+            let visualErrors = 0; 
+            let correctChars = 0;
+
+            arrayQuote.forEach((characterSpan, index) => {
+                const character = arrayValue[index];
+                
+                // 重置游標樣式
+                characterSpan.classList.remove('current');
+
+                if (character == null) {
+                    characterSpan.classList.remove('correct');
+                    characterSpan.classList.remove('incorrect');
+                    correct = false;
+                    
+                    if (index === arrayValue.length) {
+                        characterSpan.classList.add('current');
+                    }
+                } 
+                else if (character === characterSpan.innerText) {
+                    characterSpan.classList.add('correct');
+                    characterSpan.classList.remove('incorrect');
+                    correctChars++;
+                } 
+                else {
+                    characterSpan.classList.remove('correct');
+                    characterSpan.classList.add('incorrect');
+                    correct = false;
+                    visualErrors++;
+                }
+            });
+
+            // 更新 WPM 與準確度 (準確度仍以字元計算較精準，或可改為單字準確度，目前維持字元)
+            updateStats(correctChars, visualErrors, arrayValue.length);
+
+            // 如果全部打對，載入下一句
+            if (correct && arrayValue.length === currentQuoteLength) {
+                // 給予完成獎勵
+                totalScore += 50; 
+                totalScore += roundScore; // 加上這回合的單字分
+                roundScore = 0; // 清空回合分，避免重複加
+                updateScoreAndErrors(0); // 重置顯示錯誤為 0
+                renderNewQuote();
+            }
+        });
+
+        function calculateWordScore(inputValue) {
+            const targetWords = currentQuoteText.split(' ');
+            const userWords = inputValue.split(' ');
+            
+            let tempRoundScore = 0;
+            let tempWrongWords = 0;
+
+            // 遍歷使用者輸入的每一個單字
+            userWords.forEach((word, index) => {
+                // 防呆：如果輸入單字數超過題目單字數，忽略多出的部分
+                if (index >= targetWords.length) return;
+
+                // 判斷該單字是否已「完成」
+                // 條件1: 不是最後一個輸入的單字 (代表後面有空白鍵)
+                // 條件2: 雖然是最後一個單字，但總長度已達標 (代表整句打完)
+                const isWordCompleted = index < userWords.length - 1;
+                const isSentenceFinished = inputValue.length >= currentQuoteText.length;
+
+                if (isWordCompleted || isSentenceFinished) {
+                    if (word === targetWords[index]) {
+                        tempRoundScore += 10;
+                    } else {
+                        tempRoundScore -= 5;
+                        tempWrongWords++;
+                    }
+                }
+            });
+
+            roundScore = tempRoundScore;
+            // UI 顯示總分 + 當前回合分
+            scoreElement.innerText = totalScore + roundScore;
+            errorsElement.innerText = tempWrongWords;
+        }
+
+        function updateScoreAndErrors(errors) {
+            scoreElement.innerText = totalScore;
+            if (errors !== undefined) {
+                errorsElement.innerText = errors;
+            }
+        }
+
+        function getRandomQuote() {
+            return QUOTES[Math.floor(Math.random() * QUOTES.length)];
+        }
+
+        function renderNewQuote() {
+            const quote = getRandomQuote();
+            currentQuoteText = quote; // 儲存純文字版本供比對
+            quoteDisplayElement.innerHTML = '';
+            currentQuoteLength = quote.length;
+            
+            quote.split('').forEach(character => {
+                const characterSpan = document.createElement('span');
+                characterSpan.innerText = character;
+                quoteDisplayElement.appendChild(characterSpan);
+            });
+            
+            if(quoteDisplayElement.firstChild) {
+                quoteDisplayElement.firstChild.classList.add('current');
+            }
+
+            quoteInputElement.value = null;
+            
+            // 重置計時器等狀態
+            resetRoundStats();
+        }
+
+        function startTimer() {
+            startTime = new Date();
+            timer = setInterval(() => {
+                timerElement.innerText = getTimerTime();
+            }, 1000);
+        }
+
+        function getTimerTime() {
+            return Math.floor((new Date() - startTime) / 1000);
+        }
+
+        function resetRoundStats() {
+            clearInterval(timer);
+            isTimerStarted = false;
+            timerElement.innerText = 0;
+            wpmElement.innerText = 0;
+            accuracyElement.innerText = '100%';
+            
+            roundScore = 0;
+            errorsElement.innerText = 0;
+            updateScoreAndErrors(0);
+        }
+
+        function updateStats(correctChars, currentVisualErrors, totalTyped) {
+            let accuracy = 0;
+            if (totalTyped > 0) {
+                 accuracy = Math.round(((totalTyped - currentVisualErrors) / totalTyped) * 100);
+                 if (accuracy < 0) accuracy = 0;
+            } else {
+                accuracy = 100;
+            }
+            accuracyElement.innerText = `${accuracy}%`;
+
+            const timeInMinutes = (new Date() - startTime) / 60000;
+            if (timeInMinutes > 0) {
+                const wpm = Math.round((correctChars / 5) / timeInMinutes);
+                if (wpm < 0 || wpm > 1000 || !isFinite(wpm)) {
+                    wpmElement.innerText = 0;
+                } else {
+                    wpmElement.innerText = wpm;
+                }
+            }
+        }
+
+        // 初始載入
+        renderNewQuote();
+
+    </script>
+</body>
+</html>
