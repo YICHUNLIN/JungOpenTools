@@ -19,8 +19,10 @@ import ConcreteInverse from './components/concreteInverse';
 import QCTest from './components/qctest';
 import RoadCrossSectionalPreProcessV3 from './components/RoadCrossSectionalPreProcessV3';
 import RoadCrossSectionalCompare from './components/RoadCrossSectionalCompare';
+import Lottery from './components/lottery'
 
 const pages = [
+  {name: '抽獎', to: '/lottery', route: <Lottery/>},
   {name: '座標轉換', to: '/km/gis', route: <Kmgis/>},
   {name: '斷面分析(前置作業,小金路網專用)', to: '/road/crossSectionalPreProcess', route: <RoadCrossSectionalPreProcess/>},
   {name: '斷面分析(前置作業,小金路網專用)V2', to: '/road/crossSectionalPreProcessV2', route: <RoadCrossSectionalPreProcessV2/>},
@@ -38,7 +40,7 @@ const App = ({}) => {
   return (
     <>      
 
-      <MenuAppBar pages={[]}/>
+      {/* <MenuAppBar pages={[]}/> */}
       <Container maxWidth="false">
         <Switch>
         {
