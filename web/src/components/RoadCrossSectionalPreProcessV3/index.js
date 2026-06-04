@@ -38,7 +38,13 @@ const RoadCrossSectionalPreProcess = ({}) => {
         const o2 = combineMileAndH(step2.d, step2.h);
         let r = [];
         if (Object.keys(o2).length > 0) {
-            r = Object.keys(o2).map(k => {
+            r = Object.keys(o2)
+                .filter(k => o2[k].length > 0)
+                .map(k => {
+                    console.log(o2[k].sort(function(a, b) {
+                                return a[0] - b[0];
+                                }))
+                    
                     const md = {
                         name: k,
                         layers: [
@@ -71,7 +77,9 @@ const RoadCrossSectionalPreProcess = ({}) => {
                 })
         } else {
             r = Object.keys(o1)
+                .filter(k => k !== "")
                 .map(k => {
+                    console.log(k)
                     return {
                         name: k,
                         layers: [
@@ -94,6 +102,7 @@ const RoadCrossSectionalPreProcess = ({}) => {
                     }
                 })
         }
+            console.log(r)
 
         const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(
           JSON.stringify(r)

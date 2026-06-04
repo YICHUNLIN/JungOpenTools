@@ -8,6 +8,7 @@ const PolyLine = ({data, scale, offset, lineColor, pointColor, textColor, config
     const [baseY] = useState(50)
     const [points, setPoints] = useState([])
     useEffect(() => {
+        console.log(data.points)
         setPoints(genZero(data.points))
     }, [data]);
     return <Group draggable 

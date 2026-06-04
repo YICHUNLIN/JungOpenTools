@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>儲槽 VOCs 逸散量計算器 (全自動版)</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 850px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; margin-bottom: 20px; }
+        .section-title { background: #ecf0f1; padding: 8px 12px; margin: 15px 0; border-left: 4px solid #3498db; font-weight: bold; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+        .input-group { display: flex; flex-direction: column; }
+        label { font-weight: bold; margin-bottom: 5px; font-size: 0.9em; color: #555; }
+        input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
+        button { width: 100%; padding: 15px; margin-top: 25px; background-color: #e67e22; color: white; border: none; border-radius: 4px; font-size: 1.2em; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { background-color: #d35400; }
+        .result-box { margin-top: 25px; padding: 20px; background-color: #e8f8f5; border-left: 5px solid #1abc9c; border-radius: 4px; }
+        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .result-item { font-size: 1.05em; padding: 5px 0; border-bottom: 1px dashed #ccc; }
+        .result-item:last-child { border-bottom: none; }
+        .highlight { font-weight: bold; color: #c0392b; }
+        .final-result { grid-column: 1 / -1; margin-top: 15px; padding-top: 15px; border-top: 2px solid #1abc9c; font-size: 1.3em; text-align: center; }
+        
+        /* 版權與免責聲明區塊樣式 */
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            font-size: 0.85em;
+            color: #7f8c8d;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>儲槽 VOCs 逸散量計算器 (表 AP-G 終極版)</h2>
+    
+    <div class="section-title">📦 儲槽尺寸與物料參數</div>
+    <div class="form-grid">
+        <div class="input-group">
+            <label>儲槽直徑 D (m)</label>
+            <input type="number" id="D" value="1.2" step="any">
+        </div>
+        <div class="input-group">
+            <label>儲槽高度 H1 (m)</label>
+            <input type="number" id="H1" value="1.75" step="any">
+        </div>
+        <div class="input-group">
+            <label>平均液面高度 H2 (m)</label>
+            <input type="number" id="H2" value="1.5" step="any">
+        </div>
+        <div class="input-group">
+            <label>季儲存物料量 Q (m3/季)</label>
+            <input type="number" id="Q" value="60" step="any">
+        </div>
+        <div class="input-group">
+            <label>物料分子量 Mv</label>
+            <input type="number" id="Mv" value="190" step="any">
+        </div>
+        <div class="input-group">
+            <label>顏色係數 α</label>
+            <input type="number" id="alpha" value="0.89" step="any">
+        </div>
+    </div>
+
+    <div class="section-title">🌡️ 壓力與溫度參數</div>
+    <div class="form-grid">
+        <div class="input-group">
+            <label>真實蒸氣壓 P (psia)</label>
+            <input type="number" id="P" value="0.000072" step="any">
+        </div>
+        <div class="input-group">
+            <label>日蒸氣壓差 ΔP (psia)</label>
+            <input type="number" id="delta_P" value="0.00003" step="any">
+        </div>
+        <div class="input-group">
+            <label>平均溫度 T (°C)</label>
+            <input type="number" id="T" value="23.4" step="any">
+        </div>
+        <div class="input-group">
+            <label>日溫差 ΔT (°C)</label>
+            <input type="number" id="delta_T" value="5.7" step="any">
+        </div>
+    </div>
+
+    <button onclick="runCalculation()">執行計算</button>
+
+    <div class="result-box" id="resultArea" style="display: none;">
+        <div class="result-grid">
+            <div class="result-item">桶槽體積 V： <span id="res_V" class="highlight"></span> m³</div>
+            <div class="result-item">蒸氣空間 Hvo： <span id="res_Hvo" class="highlight"></span> m</div>
+            <div class="result-item">蒸氣密度 Wv： <span id="res_Wv" class="highlight"></span> g/cm³</div>
+            <div class="result-item">翻轉次數 N： <span id="res_N" class="highlight"></span></div>
+            <div class="result-item">翻轉係數 Kn： <span id="res_Kn" class="highlight"></span></div>
+            
+            <div class="result-item" style="grid-column: 1 / -1; background: #d1f2eb; padding: 5px; margin-top: 10px;">
+                Total 1： <span id="res_Total1" class="highlight"></span>
+            </div>
+            <div class="result-item" style="grid-column: 1 / -1; background: #d1f2eb; padding: 5px;">
+                Total 2： <span id="res_Total2" class="highlight"></span>
+            </div>
+            <div class="result-item" style="grid-column: 1 / -1; background: #d1f2eb; padding: 5px;">
+                Total 3： <span id="res_Total3" class="highlight"></span>
+            </div>
+
+            <div class="final-result">
+                總季逸散量 Lt： <span class="highlight" id="res_Lt"></span> <span style="font-size: 0.7em;">kg/季</span><br>
+                <span style="font-size: 0.6em; color: #555;">(年排放量估算： <span id="res_Annual"></span> t/年)</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        版權所有 © 2026 鍆資訊有限公司。<br>
+        免責聲明：你能自由使用本網頁進行計算，但我方不對任何計算結果與後續應用負起責任。
+    </div>
+
+</div>
+
+<script>
+    function calculateFullEmissions(D, H1, H2, Q, Mv, alpha, P, delta_P, T, delta_T) {
+        
+        const V = Math.PI * Math.pow((D / 2), 2) * H1;
+        const Hvo = H1 - H2 + 0.01 * D;
+
+        const R = 0.08205;
+        const P_atm = P * (1 / 14.6959);
+        const T_kelvin = T + 273.15;
+        const Wv = (P_atm * Mv) / (R * T_kelvin) / 1000;
+
+        const N = (4 * Q) / V;
+        let Kn = 1;
+        if (N > 36) {
+            Kn = (180 + N) / (6 * N);
+        }
+
+        const tempTerm = (1.296 * delta_T + 56 * alpha) / (1.8 * T + 492);
+        const pressureTerm = (delta_P - 0.06) / (14.7 - P);
+        const Total1 = 4569.41 * Wv * (tempTerm + pressureTerm);
+
+        const Total2 = 0.002855 * Mv * P * Kn;
+        const Total3 = 0.174 * P;
+
+        const standingLoss = (Total1 * Math.pow(D, 2) * Hvo) / (1 + Total3 * Hvo);
+        const workingLoss = Total2 * Q;
+        const Lt = standingLoss + workingLoss;
+        const annualTons = (Lt * 4) / 1000;
+
+        return { V, Hvo, Wv, N, Kn, Total1, Total2, Total3, Lt, annualTons };
+    }
+
+    function runCalculation() {
+        const D = parseFloat(document.getElementById('D').value);
+        const H1 = parseFloat(document.getElementById('H1').value);
+        const H2 = parseFloat(document.getElementById('H2').value);
+        const Q = parseFloat(document.getElementById('Q').value);
+        const Mv = parseFloat(document.getElementById('Mv').value);
+        const alpha = parseFloat(document.getElementById('alpha').value);
+        const P = parseFloat(document.getElementById('P').value);
+        const delta_P = parseFloat(document.getElementById('delta_P').value);
+        const T = parseFloat(document.getElementById('T').value);
+        const delta_T = parseFloat(document.getElementById('delta_T').value);
+
+        const res = calculateFullEmissions(D, H1, H2, Q, Mv, alpha, P, delta_P, T, delta_T);
+
+        document.getElementById('res_V').innerText = res.V.toFixed(3);
+        document.getElementById('res_Hvo').innerText = res.Hvo.toFixed(3);
+        document.getElementById('res_Wv').innerText = res.Wv.toExponential(6);
+        document.getElementById('res_N').innerText = res.N.toFixed(2);
+        document.getElementById('res_Kn').innerText = res.Kn.toFixed(6);
+        
+        document.getElementById('res_Total1').innerText = res.Total1.toExponential(8) + " (約 " + res.Total1.toFixed(6) + ")";
+        document.getElementById('res_Total2').innerText = res.Total2.toExponential(8) + " (約 " + res.Total2.toFixed(6) + ")";
+        document.getElementById('res_Total3').innerText = res.Total3.toExponential(8) + " (約 " + res.Total3.toFixed(6) + ")";
+        
+        document.getElementById('res_Lt').innerText = res.Lt.toFixed(6);
+        document.getElementById('res_Annual').innerText = res.annualTons.toExponential(6);
+
+        document.getElementById('resultArea').style.display = 'block';
+    }
+</script>
+
+</body>
+</html>
