@@ -214,14 +214,17 @@
         <span class="badge r">殘影 = 施工前</span>
         <video id="rec-video" playsinline muted style="display:none"></video>
         <img class="base" id="rec-baseimg" style="display:none" alt="現況">
+        <canvas id="rec-warp" style="position:absolute;inset:0;width:100%;height:100%;display:none;pointer-events:none"></canvas>
         <div class="ghost-wrap">
           <div class="ghost-stage" id="rec-ghost">
             <img id="rec-ghostimg" alt="施工前殘影">
             <div class="xhair" id="rec-xhair"><span></span></div>
             <svg id="rec-refsvg" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
             <div id="rec-reflbl" style="position:absolute;inset:0;pointer-events:none"></div>
+            <svg id="rec-roisvg" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
           </div>
         </div>
+        <div class="xhair" id="rec-warp-xhair" style="display:none"><span></span></div>
       </div>
 
       <div class="row">
@@ -230,6 +233,17 @@
       </div>
 
       <div class="ctrl"><label>殘影濃度 <b id="o-op">55%</b></label><input type="range" id="s-op" min="0" max="100" value="55"></div>
+
+      <div class="hint" style="margin-top:12px"><b>自動對齊(特徵比對)</b> — 先按「圈選比對區」框出施工前後<b>都還在</b>的固定特徵(建物角、緣石、電桿、牆面),避開會變動的地面與人孔;再按「自動對齊」。系統只在框內以 Shi-Tomasi(特徵值)抓角點,與現況配對後自動把殘影疊好、人孔點映射過去。</div>
+      <div class="row">
+        <button class="btn sm" id="roi-toggle">圈選比對區</button>
+        <button class="btn sm" id="roi-clear">清除框</button>
+        <button class="btn sm hv" id="auto-align">自動對齊</button>
+      </div>
+      <div class="chips" style="margin-top:8px">
+        <div class="chip">OpenCV <b id="cv-stat">載入中…</b></div>
+        <div class="chip">配對信心 <b id="match-stat">—</b></div>
+      </div>
     </div>
   </section>
 
@@ -469,11 +483,13 @@
     const refs=r.refs||[];
     $('#rc-refs').textContent = refs.length ? refs.length+' 組' : '—';
     drawRefs($('#rec-refsvg'), $('#rec-reflbl'), refs, null);
+    rois=[]; roiTmp=null; roiMode=false; $('#roi-toggle').classList.remove('on'); drawRois(); setMatchStat('—');
     resetGhostTransform();
-    // default base = camera; user may switch to a still
+    // default base = camera
     startRecCamera();
   }
   async function startRecCamera(){
+    restoreManual();
     recBaseImg.style.display='none'; recVideo.style.display='block';
     $('#rec-base-badge').textContent='現況 · 相機';
     await startCamera(recVideo);
@@ -481,29 +497,117 @@
   $('#rec-cam').onclick = startRecCamera;
   $('#rec-recenter').onclick = resetGhostTransform;
 
-  function resetGhostTransform(){
-    ghost.px=0; ghost.py=0;
-    applyGhost();
-  }
+  function resetGhostTransform(){ ghost.px=0; ghost.py=0; applyGhost(); restoreManual(); }
   function applyGhost(){
     recGhost.style.opacity=ghost.op;
     recGhost.style.transform=`translate(${ghost.px}px,${ghost.py}px)`;
+    const w=$('#rec-warp'); if(w) w.style.opacity=ghost.op;
   }
+  function restoreManual(){ const w=$('#rec-warp'); if(w) w.style.display='none'; const x=$('#rec-warp-xhair'); if(x) x.style.display='none'; recGhost.style.display=''; }
   $('#s-op').oninput=e=>{ ghost.op=e.target.value/100; $('#o-op').textContent=e.target.value+'%'; applyGhost(); };
 
-  // drag ghost to pan
+  /* ---------- pan ghost OR draw ROI ---------- */
+  let roiMode=false, rois=[], roiTmp=null, cvReady=false;
   (function(){
-    let drag=false,lx=0,ly=0;
-    const wrap=$('.ghost-wrap');
-    wrap.style.pointerEvents='auto';
-    const down=(x,y)=>{drag=true;lx=x;ly=y;};
-    const move=(x,y)=>{ if(!drag)return; ghost.px+=x-lx; ghost.py+=y-ly; lx=x; ly=y; applyGhost(); };
-    const up=()=>{drag=false;};
-    wrap.addEventListener('pointerdown',e=>{down(e.clientX,e.clientY);wrap.setPointerCapture(e.pointerId);});
-    wrap.addEventListener('pointermove',e=>move(e.clientX,e.clientY));
-    wrap.addEventListener('pointerup',up);
-    wrap.addEventListener('pointercancel',up);
+    let drag=false,lx=0,ly=0,startN=null;
+    const wrap=$('.ghost-wrap'); wrap.style.pointerEvents='auto';
+    const norm=(x,y)=>{ const r=recGhostImg.getBoundingClientRect(); return {x:Math.min(1,Math.max(0,(x-r.left)/r.width)), y:Math.min(1,Math.max(0,(y-r.top)/r.height))}; };
+    wrap.addEventListener('pointerdown',e=>{ wrap.setPointerCapture(e.pointerId); drag=true; lx=e.clientX; ly=e.clientY;
+      if(roiMode){ startN=norm(e.clientX,e.clientY); roiTmp={x:startN.x,y:startN.y,w:0,h:0}; } });
+    wrap.addEventListener('pointermove',e=>{ if(!drag) return;
+      if(roiMode){ const n=norm(e.clientX,e.clientY); roiTmp={x:Math.min(startN.x,n.x),y:Math.min(startN.y,n.y),w:Math.abs(n.x-startN.x),h:Math.abs(n.y-startN.y)}; drawRois(); }
+      else { ghost.px+=e.clientX-lx; ghost.py+=e.clientY-ly; lx=e.clientX; ly=e.clientY; applyGhost(); } });
+    const end=()=>{ if(!drag) return; drag=false;
+      if(roiMode && roiTmp){ if(roiTmp.w>0.02 && roiTmp.h>0.02) rois.push(roiTmp); roiTmp=null; drawRois(); } };
+    wrap.addEventListener('pointerup',end); wrap.addEventListener('pointercancel',end);
   })();
+  function drawRois(){ const svg=$('#rec-roisvg'); if(!svg) return; while(svg.firstChild) svg.removeChild(svg.firstChild);
+    const mk=(r,c)=>{ const e=document.createElementNS('http://www.w3.org/2000/svg','rect'); e.setAttribute('x',r.x*100);e.setAttribute('y',r.y*100);e.setAttribute('width',r.w*100);e.setAttribute('height',r.h*100); e.setAttribute('fill','rgba(93,202,165,.18)'); e.setAttribute('stroke',c||'#5DCAA5'); e.setAttribute('stroke-width','2'); e.setAttribute('vector-effect','non-scaling-stroke'); svg.appendChild(e); };
+    rois.forEach(r=>mk(r)); if(roiTmp) mk(roiTmp,'#FFB400'); }
+  $('#roi-toggle').onclick=()=>{ roiMode=!roiMode; $('#roi-toggle').classList.toggle('on',roiMode);
+    if(roiMode){ ghost.op=Math.max(ghost.op,0.85); $('#s-op').value=Math.round(ghost.op*100); $('#o-op').textContent=Math.round(ghost.op*100)+'%'; applyGhost(); } };
+  $('#roi-clear').onclick=()=>{ rois=[]; roiTmp=null; drawRois(); };
+  $('#auto-align').onclick=autoAlign;
+
+  /* ---------- OpenCV.js ---------- */
+  function setCvStat(t){ const e=$('#cv-stat'); if(e) e.textContent=t; }
+  function setMatchStat(t){ const e=$('#match-stat'); if(e) e.textContent=t; }
+  (function(){
+    const SRCS=['opencv.js',
+      'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.12.0-release.1/dist/opencv.js',
+      'https://docs.opencv.org/4.x/opencv.js'];
+    (function tryNext(i){
+      if(window.cv && cv.Mat) return;
+      if(i>=SRCS.length){ if(!cvReady) setCvStat('載入失敗 · 請把 opencv.js 放到網頁同目錄'); return; }
+      setCvStat('載入中… '+(i+1)+'/'+SRCS.length);
+      const s=document.createElement('script'); s.async=true; s.src=SRCS[i];
+      s.onerror=()=>{ s.remove(); tryNext(i+1); };
+      document.body.appendChild(s);
+    })(0);
+    let tries=0; (function poll(){ if(cvReady) return;
+      if(window.cv && cv.Mat && cv.ORB){ cvReady=true; setCvStat('就緒'); }
+      else if(++tries<400) setTimeout(poll,300); })();
+  })();
+  function mapPt(H,x,y){ const h=H.data64F; const d=h[6]*x+h[7]*y+h[8]; return [(h[0]*x+h[1]*y+h[2])/d,(h[3]*x+h[4]*y+h[5])/d]; }
+  // Shi-Tomasi (eigenvalue-based) corner detection, then ORB descriptors at those corners
+  function shiTomasiCompute(orb, gray, mask){
+    const corners=new cv.Mat();
+    cv.goodFeaturesToTrack(gray, corners, 1200, 0.01, 8, mask, 3, false, 0.04);
+    const kp=new cv.KeyPointVector();
+    for(let i=0;i<corners.rows;i++){ kp.push_back(new cv.KeyPoint(corners.data32F[i*2], corners.data32F[i*2+1], 31, -1, 0, 0, -1)); }
+    const des=new cv.Mat();
+    if(corners.rows>0) orb.compute(gray, kp, des);
+    corners.delete();
+    return {kp, des};
+  }
+
+  async function autoAlign(){
+    if(!cvReady){ alert('OpenCV 還在載入,稍候再試。'); return; }
+    const r=records.find(x=>x.id===recSel.value); if(!r) return;
+    if(!stream || !recVideo.videoWidth){ alert('請先開啟相機,對好大致構圖再自動對齊。'); return; }
+    if(roiMode){ roiMode=false; $('#roi-toggle').classList.remove('on'); }
+    const cc=document.createElement('canvas'); cc.width=recVideo.videoWidth; cc.height=recVideo.videoHeight;
+    cc.getContext('2d').drawImage(recVideo,0,0);
+    recBaseImg.src=cc.toDataURL('image/jpeg',0.92); recBaseImg.style.display='block';
+    recVideo.style.display='none'; stopCamera(); $('#rec-base-badge').textContent='現況 · 已擷取';
+    setMatchStat('比對中…');
+    setTimeout(()=>{ try{ runMatch(r,cc); }catch(err){ console.error(err); setMatchStat('比對失敗'); alert('比對發生錯誤:'+err.message); } }, 60);
+  }
+  function runMatch(r, curCanvas){
+    const before=recGhostImg;
+    let c1,g1,g2c,g2,mask,em,orb,kp1,kp2,des1,des2,bf,matches,src,dst,Hmask,H,warped;
+    const cleanup=()=>{ [c1,g1,g2c,g2,mask,em,des1,des2,src,dst,Hmask,H,warped].forEach(m=>{try{m&&m.delete&&m.delete();}catch(e){}});
+      [kp1,kp2].forEach(k=>{try{k&&k.delete();}catch(e){}}); try{matches&&matches.delete();}catch(e){} try{orb&&orb.delete();}catch(e){} try{bf&&bf.delete();}catch(e){} };
+    try{
+      c1=cv.imread(before); g1=new cv.Mat(); cv.cvtColor(c1,g1,cv.COLOR_RGBA2GRAY);
+      g2c=cv.imread(curCanvas); g2=new cv.Mat(); cv.cvtColor(g2c,g2,cv.COLOR_RGBA2GRAY);
+      mask=cv.Mat.zeros(g1.rows,g1.cols,cv.CV_8U);
+      if(rois.length){ rois.forEach(q=>{ const x=Math.round(q.x*g1.cols),y=Math.round(q.y*g1.rows),w=Math.round(q.w*g1.cols),h=Math.round(q.h*g1.rows);
+        cv.rectangle(mask,new cv.Point(x,y),new cv.Point(x+w,y+h),new cv.Scalar(255),-1); }); }
+      else { mask.delete(); mask=new cv.Mat(); }
+      orb=new cv.ORB(1500);
+      const r1=shiTomasiCompute(orb,g1,mask); kp1=r1.kp; des1=r1.des;
+      em=new cv.Mat(); const r2=shiTomasiCompute(orb,g2,em); kp2=r2.kp; des2=r2.des;
+      if(des1.rows<8 || des2.rows<8){ setMatchStat('特徵不足'); alert('框內特徵太少,改框更有紋理的區域(建物邊角、文字、欄杆…)。'); cleanup(); return; }
+      bf=new cv.BFMatcher(cv.NORM_HAMMING,false); matches=new cv.DMatchVectorVector(); bf.knnMatch(des1,des2,matches,2);
+      const good=[];
+      for(let i=0;i<matches.size();i++){ const m=matches.get(i); if(m.size()<2) continue; const a=m.get(0),b=m.get(1); if(a.distance<0.75*b.distance) good.push(a); }
+      if(good.length<8){ setMatchStat('配對不足 '+good.length); alert('可配對特徵太少('+good.length+')。多框幾處、或讓現況視角更接近施工前。'); cleanup(); return; }
+      const sArr=[],dArr=[]; good.forEach(m=>{ const p1=kp1.get(m.queryIdx).pt,p2=kp2.get(m.trainIdx).pt; sArr.push(p1.x,p1.y); dArr.push(p2.x,p2.y); });
+      src=cv.matFromArray(good.length,1,cv.CV_32FC2,sArr); dst=cv.matFromArray(good.length,1,cv.CV_32FC2,dArr);
+      Hmask=new cv.Mat(); H=cv.findHomography(src,dst,cv.RANSAC,5,Hmask);
+      if(H.empty()){ setMatchStat('無法求解'); alert('無法估出對應(配對太散亂)。'); cleanup(); return; }
+      const inl=cv.countNonZero(Hmask);
+      warped=new cv.Mat(); cv.warpPerspective(c1,warped,H,new cv.Size(curCanvas.width,curCanvas.height));
+      const wc=$('#rec-warp'); wc.width=curCanvas.width; wc.height=curCanvas.height; cv.imshow(wc,warped);
+      wc.style.display='block'; wc.style.opacity=ghost.op; recGhost.style.display='none';
+      const mx=r.target_px.x*before.naturalWidth, my=r.target_px.y*before.naturalHeight, mp=mapPt(H,mx,my);
+      const xh=$('#rec-warp-xhair'); xh.style.display='block'; xh.style.left=(mp[0]/curCanvas.width*100)+'%'; xh.style.top=(mp[1]/curCanvas.height*100)+'%';
+      const conf=Math.round(inl/good.length*100);
+      setMatchStat(inl+' 內點 · '+conf+'%'+(inl>=15?' ✓':inl>=8?' 尚可':' 偏弱'));
+      cleanup();
+    }catch(e){ cleanup(); throw e; }
+  }
 
   /* ================= RECORDS ================= */
   function renderRecords(){
