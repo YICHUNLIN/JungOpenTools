@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>點位回溯 · 人孔影像定位</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101311; --panel:#171b18; --panel2:#1e231f; --line:#2c322d;
+    --txt:#e7e9e3; --mut:#9aa093; --dim:#6b7164;
+    --hv:#FFB400; --hv-d:#3a2d00; --ok:#34d399; --ok-d:#053024; --warn:#ff8c42;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    --disp:'Barlow Condensed',system-ui,sans-serif;
+    --body:'Barlow',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:var(--body)}
+  body{display:flex;flex-direction:column;overscroll-behavior:none}
+  button{font-family:var(--body);cursor:pointer}
+  .mono{font-family:var(--mono)}
+
+  header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header .logo{width:26px;height:26px;border:2px solid var(--hv);border-radius:50%;position:relative;flex:none}
+  header .logo::after{content:"";position:absolute;inset:6px;border-radius:50%;background:var(--hv)}
+  header h1{font-family:var(--disp);font-weight:700;font-size:20px;letter-spacing:.06em;text-transform:uppercase;margin:0;line-height:1}
+  header .sub{font-size:11px;color:var(--dim);letter-spacing:.18em;text-transform:uppercase;margin-top:2px}
+
+  nav{display:flex;background:var(--panel);border-bottom:1px solid var(--line)}
+  nav button{flex:1;background:none;border:none;color:var(--mut);font-family:var(--disp);font-weight:600;font-size:15px;letter-spacing:.08em;text-transform:uppercase;padding:12px 4px;border-bottom:2px solid transparent}
+  nav button.on{color:var(--hv);border-bottom-color:var(--hv)}
+
+  main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .view{display:none;padding:14px}
+  .view.on{display:block}
+
+  .stage{position:relative;width:100%;background:#000;border:1px solid var(--line);border-radius:10px;overflow:hidden;min-height:200px}
+  .stage video,.stage>img.base{display:block;width:100%;height:auto}
+  .ghost-wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .ghost-stage{position:relative;width:100%;transform-origin:center center;will-change:transform}
+  .ghost-stage img{display:block;width:100%;height:auto}
+  .photo-box{position:relative;display:inline-block;width:100%}
+  .photo-box img{display:block;width:100%;height:auto;border-radius:10px}
+
+  .xhair{position:absolute;width:46px;height:46px;margin:-23px 0 0 -23px;pointer-events:none}
+  .xhair::before,.xhair::after{content:"";position:absolute;background:var(--hv)}
+  .xhair::before{left:50%;top:0;width:2px;height:100%;margin-left:-1px}
+  .xhair::after{top:50%;left:0;height:2px;width:100%;margin-top:-1px}
+  .xhair span{position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border:2px solid var(--hv);border-radius:50%;background:rgba(255,180,0,.12)}
+  .xhair.lbl::after{box-shadow:none}
+
+  .row{display:flex;gap:8px;margin:12px 0}
+  .row.wrap{flex-wrap:wrap}
+  .btn{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:12px;font-size:14px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:7px;transition:.12s}
+  .btn:active{transform:scale(.98)}
+  .btn.hv{background:var(--hv);color:#1a1500;border-color:var(--hv);font-weight:600}
+  .btn.ok{background:var(--ok);color:var(--ok-d);border-color:var(--ok);font-weight:600}
+  .btn.sm{flex:none;padding:8px 12px;font-size:13px}
+  .btn:disabled{opacity:.4}
+  .btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
+
+  .ctrl{margin:10px 0}
+  .ctrl label{display:flex;justify-content:space-between;font-size:12px;color:var(--mut);letter-spacing:.04em;margin-bottom:5px;text-transform:uppercase;font-family:var(--disp);font-weight:600}
+  .ctrl label b{font-family:var(--mono);color:var(--hv);font-weight:500}
+  input[type=range]{width:100%;height:30px;-webkit-appearance:none;background:none}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;background:var(--line);border-radius:2px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--hv);margin-top:-9px;border:3px solid var(--bg)}
+  input[type=range]::-moz-range-track{height:4px;background:var(--line);border-radius:2px}
+  input[type=range]::-moz-range-thumb{width:18px;height:18px;border:3px solid var(--bg);border-radius:50%;background:var(--hv)}
+
+  .field{margin:10px 0}
+  .field label{display:block;font-size:12px;color:var(--mut);font-family:var(--disp);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px}
+  .field input[type=text],.field input[type=number],.field textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:11px;font-size:15px;font-family:var(--body)}
+  .field input:focus,.field textarea:focus{outline:none;border-color:var(--hv)}
+  .field textarea{resize:vertical;min-height:54px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .chip{font-family:var(--mono);font-size:12px;background:var(--panel2);border:1px solid var(--line);color:var(--mut);padding:6px 10px;border-radius:7px}
+  .chip b{color:var(--hv);font-weight:500}
+
+  .hint{font-size:12.5px;color:var(--dim);line-height:1.5;margin:8px 2px}
+  .hint b{color:var(--mut);font-weight:600}
+  .badge{position:absolute;top:8px;left:8px;z-index:5;font-family:var(--mono);font-size:11px;background:rgba(0,0,0,.6);color:var(--txt);padding:4px 9px;border-radius:6px;letter-spacing:.04em}
+  .badge.r{left:auto;right:8px}
+
+  .rec{display:flex;gap:11px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;align-items:center}
+  .rec img{width:64px;height:64px;object-fit:cover;border-radius:7px;background:#000;flex:none}
+  .rec .meta{flex:1;min-width:0}
+  .rec .meta .id{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.04em}
+  .rec .meta .sm{font-size:12px;color:var(--mut);font-family:var(--mono);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rec .acts{display:flex;flex-direction:column;gap:6px}
+  .rec .acts button{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:7px 10px;font-size:12px}
+  .rec .acts button.go{background:var(--hv);color:#1a1500;border-color:var(--hv);font-weight:600}
+
+  .empty{text-align:center;color:var(--dim);padding:40px 20px;font-size:14px}
+  .empty .big{font-family:var(--disp);font-size:22px;color:var(--mut);margin-bottom:6px;letter-spacing:.05em}
+
+  .bar{display:flex;gap:8px;margin-top:6px}
+  .note{background:var(--hv-d);border:1px solid #5a4700;color:#ffd56b;font-size:12.5px;border-radius:8px;padding:10px 12px;line-height:1.5;margin:10px 0}
+  select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:11px;font-size:15px;font-family:var(--body)}
+  .sec-title{font-family:var(--disp);font-weight:700;font-size:16px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:18px 2px 6px}
+  .btn.on{outline:2px solid var(--hv);outline-offset:-2px;color:var(--hv)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"></div>
+  <div>
+    <h1>點位回溯</h1>
+    <div class="sub">Manhole Image Locator</div>
+  </div>
+</header>
+
+<nav>
+  <button data-view="capture" class="on">登錄</button>
+  <button data-view="recover">回收</button>
+  <button data-view="records">紀錄</button>
+</nav>
+
+<main>
+
+  <!-- ============ 登錄(施工前) ============ -->
+  <section class="view on" id="v-capture">
+    <div class="row wrap" id="cap-source">
+      <button class="btn" id="cap-cam"><svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L19 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="13" cy="12.5" r="3.5"/></svg>開啟相機</button>
+      <button class="btn" id="cap-file"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 15l5-5 4 4 3-3 4 4"/></svg>從相簿選</button>
+    </div>
+
+    <div class="stage" id="cap-stage" style="display:none">
+      <span class="badge" id="cap-badge">點擊畫面 → 標出人孔中心</span>
+      <video id="cap-video" playsinline muted style="display:none"></video>
+      <div class="photo-box" id="cap-photobox" style="display:none">
+        <img id="cap-img" alt="施工前影像">
+        <div class="xhair" id="cap-xhair" style="display:none"><span></span></div>
+        <svg id="cap-refsvg" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
+        <div id="cap-reflbl" style="position:absolute;inset:0;pointer-events:none"></div>
+      </div>
+    </div>
+
+    <div class="row" id="cap-shoot" style="display:none">
+      <button class="btn hv" id="cap-snap">拍下這一張</button>
+      <button class="btn sm" id="cap-cancelcam">取消</button>
+    </div>
+
+    <div id="cap-form" style="display:none">
+      <div class="hint" id="cap-mark-hint"><b>步驟 2</b> — 用手指點畫面裡的人孔正中心,放下標記。可重複點擊修正。</div>
+      <div class="field">
+        <label>標記模式</label>
+        <div class="row" style="margin:0 0 6px">
+          <button class="btn sm on" id="md-target">人孔中心</button>
+          <button class="btn sm" id="md-dist">加距離參考</button>
+        </div>
+        <div id="dist-hint" class="hint" style="display:none;margin:0 0 6px"><b>距離參考(捲尺交會)</b> — 點兩個可辨識的固定特徵(或特徵↔人孔),輸入實測距離 m,可多組。回收時依這些距離用捲尺交會,疊圖不夠也能定位。</div>
+        <div id="pair-input" style="display:none">
+          <div class="row" style="margin:0">
+            <input type="number" id="pair-d" step="0.01" inputmode="decimal" placeholder="實測距離 m" style="flex:2;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font-family:var(--mono);font-size:14px">
+            <input type="text" id="pair-label" placeholder="註記(選填)" style="flex:2;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font-family:var(--mono);font-size:13px">
+          </div>
+          <div class="row" style="margin:6px 0 0">
+            <button class="btn ok sm" id="pair-ok">加入</button>
+            <button class="btn sm" id="pair-cancel">取消</button>
+          </div>
+        </div>
+        <div id="ref-list"></div>
+      </div>
+      <div class="field">
+        <label>紀錄編號</label>
+        <input type="text" id="f-id" placeholder="例如 MH-014">
+      </div>
+      <div class="grid2">
+        <div class="field"><label>手機離地高度 (m)</label><input type="number" id="f-height" step="0.01" inputmode="decimal" placeholder="1.45"></div>
+        <div class="field"><label>標竿位置註記</label><input type="text" id="f-pole" placeholder="P-3 同點"></div>
+      </div>
+      <div class="field">
+        <label>概略 GPS(僅作索引)</label>
+        <div class="row" style="margin:0">
+          <input type="text" id="f-gps" placeholder="尚未取得" readonly style="flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:11px;font-family:var(--mono);font-size:13px">
+          <button class="btn sm" id="f-gps-btn">定位</button>
+        </div>
+      </div>
+      <div class="field"><label>備註</label><textarea id="f-notes" placeholder="周邊特徵、開挖深度、施工項目…"></textarea></div>
+      <div class="row">
+        <button class="btn ok" id="cap-save">儲存這筆紀錄</button>
+        <button class="btn sm" id="cap-reset">重來</button>
+      </div>
+    </div>
+
+    <div class="note">相機需在 <b>HTTPS</b> 或 localhost 下才能啟用;直接以 file:// 開啟時部分瀏覽器會擋,可改用「從相簿選」測試。</div>
+  </section>
+
+  <!-- ============ 回收(施工後) ============ -->
+  <section class="view" id="v-recover">
+    <div class="field">
+      <label>選擇要回收的紀錄</label>
+      <select id="rec-select"><option value="">— 尚無紀錄 —</option></select>
+    </div>
+
+    <div id="rec-panel" style="display:none">
+      <div class="chips">
+        <div class="chip">手機離地 <b id="rc-h">—</b></div>
+        <div class="chip">標竿 <b id="rc-pole">—</b></div>
+        <div class="chip">距離參考 <b id="rc-refs">—</b></div>
+      </div>
+      <div class="hint"><b>對齊方式</b> — 把標竿插回同一點、手機回到記錄高度,先讓畫面構圖接近舊照;再拖動殘影、微調縮放/旋轉,讓存活特徵與殘影重合。重合的瞬間,橘色十字就指著人孔。</div>
+
+      <div class="stage" id="rec-stage">
+        <span class="badge" id="rec-base-badge">現況</span>
+        <span class="badge r">殘影 = 施工前</span>
+        <video id="rec-video" playsinline muted style="display:none"></video>
+        <img class="base" id="rec-baseimg" style="display:none" alt="現況">
+        <div class="ghost-wrap">
+          <div class="ghost-stage" id="rec-ghost">
+            <img id="rec-ghostimg" alt="施工前殘影">
+            <div class="xhair" id="rec-xhair"><span></span></div>
+            <svg id="rec-refsvg" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
+            <div id="rec-reflbl" style="position:absolute;inset:0;pointer-events:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn sm" id="rec-cam"><svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L19 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="13" cy="12.5" r="3.5"/></svg>開啟相機</button>
+        <button class="btn sm" id="rec-cur"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 15l5-5 4 4 3-3 4 4"/></svg>用現況照片</button>
+        <button class="btn sm" id="rec-recenter">歸位</button>
+      </div>
+
+      <div class="ctrl"><label>殘影濃度 <b id="o-op">55%</b></label><input type="range" id="s-op" min="0" max="100" value="55"></div>
+    </div>
+  </section>
+
+  <!-- ============ 紀錄 ============ -->
+  <section class="view" id="v-records">
+    <div class="row">
+      <button class="btn sm" id="rec-export">匯出 JSON</button>
+      <button class="btn sm" id="rec-import">匯入 JSON</button>
+      <input type="file" id="rec-importfile" accept="application/json" style="display:none">
+    </div>
+    <div id="rec-list"></div>
+  </section>
+
+</main>
+
+<canvas id="scratch" style="display:none"></canvas>
+
+<script>
+"use strict";
+(function(){
+  const $ = s => document.querySelector(s);
+  const STORE = 'manhole_locator_records_v1';
+
+  let records = load();
+  let stream = null;            // active camera stream
+  let cap = { mode:null, dataURL:null, target:null, refs:[] }; // target {x,y} normalised 0..1; refs:[{a,b,dist,label}]
+  let clickMode='target', pending=null;
+  let ghost = { op:0.55, px:0, py:0 };
+
+  /* ---------- storage ---------- */
+  function load(){ try{ return JSON.parse(localStorage.getItem(STORE)||'[]'); }catch(e){ return []; } }
+  function save(){ try{ localStorage.setItem(STORE, JSON.stringify(records)); }catch(e){ alert('儲存失敗:可能超出瀏覽器空間,請先匯出備份。'); } }
+
+  /* ---------- nav ---------- */
+  document.querySelectorAll('nav button').forEach(b=>{
+    b.onclick = ()=>{
+      document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+      document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      $('#v-'+b.dataset.view).classList.add('on');
+      stopCamera();
+      if(b.dataset.view==='records') renderRecords();
+      if(b.dataset.view==='recover') refreshSelect();
+    };
+  });
+
+  /* ---------- camera helpers ---------- */
+  async function startCamera(videoEl){
+    stopCamera();
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
+      videoEl.srcObject = stream; await videoEl.play();
+      return true;
+    }catch(e){ alert('無法開啟相機:'+e.message+'\n請改用照片上傳,或在 HTTPS 環境下使用。'); return false; }
+  }
+  function stopCamera(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
+
+  function downscale(srcDataURL, max=1280, q=0.82){
+    return new Promise(res=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let {width:w, height:h} = img;
+        const s = Math.min(1, max/Math.max(w,h));
+        w=Math.round(w*s); h=Math.round(h*s);
+        const c=$('#scratch'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        res(c.toDataURL('image/jpeg', q));
+      };
+      img.src = srcDataURL;
+    });
+  }
+  function frameToDataURL(videoEl){
+    const c=$('#scratch'); c.width=videoEl.videoWidth; c.height=videoEl.videoHeight;
+    c.getContext('2d').drawImage(videoEl,0,0);
+    return c.toDataURL('image/jpeg',0.85);
+  }
+  function readFile(input){
+    return new Promise((res,rej)=>{
+      const f=input.files&&input.files[0]; if(!f){rej();return;}
+      const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f);
+    });
+  }
+  function pickFile(accept,cb){
+    const i=document.createElement('input'); i.type='file'; i.accept=accept||'image/*';
+    i.onchange=()=>readFile(i).then(cb).catch(()=>{}); i.click();
+  }
+
+  /* ================= CAPTURE ================= */
+  const capStage=$('#cap-stage'), capVideo=$('#cap-video'), capBox=$('#cap-photobox'),
+        capImg=$('#cap-img'), capXhair=$('#cap-xhair'), capBadge=$('#cap-badge');
+
+  $('#cap-cam').onclick = async ()=>{
+    capStage.style.display='block'; capVideo.style.display='block';
+    capBox.style.display='none'; $('#cap-shoot').style.display='flex';
+    capBadge.textContent='對好施工前畫面 → 拍下';
+    await startCamera(capVideo);
+  };
+  $('#cap-file').onclick = ()=> pickFile('image/*', async (d)=>{ setCapturePhoto(await downscale(d)); });
+  $('#cap-snap').onclick = async ()=>{
+    if(!stream) return;
+    const d = frameToDataURL(capVideo); stopCamera();
+    capVideo.style.display='none'; $('#cap-shoot').style.display='none';
+    setCapturePhoto(await downscale(d));
+  };
+  $('#cap-cancelcam').onclick = ()=>{ stopCamera(); resetCapture(); };
+
+  function setCapturePhoto(dataURL){
+    cap.dataURL=dataURL; cap.target=null; cap.refs=[]; pending=null;
+    capStage.style.display='block'; capBox.style.display='inline-block';
+    capImg.src=dataURL; capXhair.style.display='none';
+    capBadge.textContent='點擊畫面 → 標出人孔中心';
+    $('#cap-shoot').style.display='none';
+    $('#cap-form').style.display='block';
+    setClickMode('target'); renderRefList(); redrawCapRefs();
+    if(!$('#f-id').value) $('#f-id').value = suggestId();
+  }
+  capBox.onclick = (e)=>{
+    const r=capImg.getBoundingClientRect();
+    const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+    if(x<0||x>1||y<0||y>1) return;
+    if(clickMode==='target'){
+      cap.target={x:+x.toFixed(4), y:+y.toFixed(4)};
+      capXhair.style.display='block';
+      capXhair.style.left=(x*100)+'%'; capXhair.style.top=(y*100)+'%';
+      capBadge.textContent='人孔中心已標記 ✓';
+    } else {
+      if(pending && pending.b) return; // waiting for 加入/取消
+      const p={x:+x.toFixed(4), y:+y.toFixed(4)};
+      if(!pending){ pending={a:p}; capBadge.textContent='點第二個參考點'; }
+      else { pending.b=p; $('#pair-input').style.display='block'; capBadge.textContent='輸入兩點實測距離'; $('#pair-d').focus(); }
+      redrawCapRefs();
+    }
+  };
+
+  /* ---------- distance references (witness / swing-tie) ---------- */
+  const SVGNS='http://www.w3.org/2000/svg';
+  function drawRefs(svg, lbl, refs, pend){
+    while(svg.firstChild) svg.removeChild(svg.firstChild); lbl.innerHTML='';
+    const line=(a,b,c)=>{ const l=document.createElementNS(SVGNS,'line'); l.setAttribute('x1',a.x*100);l.setAttribute('y1',a.y*100);l.setAttribute('x2',b.x*100);l.setAttribute('y2',b.y*100); l.setAttribute('stroke',c||'#ff8c6b'); l.setAttribute('stroke-width','2'); l.setAttribute('vector-effect','non-scaling-stroke'); svg.appendChild(l); };
+    const dot=(p,c)=>{ const e=document.createElement('div'); e.style.cssText='position:absolute;left:'+(p.x*100)+'%;top:'+(p.y*100)+'%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:'+(c||'#ff8c6b')+';box-shadow:0 0 0 1.5px rgba(0,0,0,.55)'; lbl.appendChild(e); };
+    const tag=(p,t)=>{ const e=document.createElement('div'); e.textContent=t; e.style.cssText='position:absolute;left:'+(p.x*100)+'%;top:'+(p.y*100)+'%;transform:translate(-50%,-50%);background:rgba(0,0,0,.72);color:#fff;font:600 12px/1 monospace;padding:3px 6px;border-radius:5px;white-space:nowrap'; lbl.appendChild(e); };
+    refs.forEach(rf=>{ line(rf.a,rf.b); dot(rf.a); dot(rf.b); tag({x:(rf.a.x+rf.b.x)/2,y:(rf.a.y+rf.b.y)/2},(rf.label?rf.label+' · ':'')+rf.dist+' m'); });
+    if(pend){ if(pend.a) dot(pend.a,'#FFB400'); if(pend.b){ dot(pend.b,'#FFB400'); line(pend.a,pend.b,'#FFB400'); } }
+  }
+  function redrawCapRefs(){ drawRefs($('#cap-refsvg'), $('#cap-reflbl'), cap.refs, pending); }
+  function renderRefList(){
+    const el=$('#ref-list');
+    if(!cap.refs.length){ el.innerHTML=''; return; }
+    el.innerHTML='<div style="font:700 12px var(--disp);color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 5px">距離參考 ('+cap.refs.length+')</div>'+
+      cap.refs.map((rf,i)=>`<div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-bottom:6px;font-family:var(--mono);font-size:13px"><span style="flex:1">${rf.label?rf.label+' · ':''}<b style="color:var(--hv)">${rf.dist} m</b></span><button data-rdel="${i}" style="background:none;border:1px solid var(--line);color:var(--mut);border-radius:6px;padding:4px 9px;font-size:12px">刪</button></div>`).join('');
+    el.querySelectorAll('[data-rdel]').forEach(b=>b.onclick=()=>{ cap.refs.splice(+b.dataset.rdel,1); redrawCapRefs(); renderRefList(); });
+  }
+  function setClickMode(m){
+    clickMode=m; pending=null; $('#pair-input').style.display='none';
+    $('#md-target').classList.toggle('on',m==='target');
+    $('#md-dist').classList.toggle('on',m==='dist');
+    $('#dist-hint').style.display = m==='dist'?'block':'none';
+    capBadge.textContent = m==='dist' ? '點第一個參考點' : '點擊畫面 → 標出人孔中心';
+    redrawCapRefs();
+  }
+  $('#md-target').onclick=()=>setClickMode('target');
+  $('#md-dist').onclick=()=>setClickMode('dist');
+  $('#pair-ok').onclick=()=>{
+    const d=parseFloat($('#pair-d').value);
+    if(!(d>0)){ alert('請輸入實測距離(公尺)'); return; }
+    if(!pending||!pending.a||!pending.b){ $('#pair-input').style.display='none'; return; }
+    cap.refs.push({a:pending.a,b:pending.b,dist:+d.toFixed(3),label:$('#pair-label').value.trim()});
+    pending=null; $('#pair-input').style.display='none'; $('#pair-d').value=''; $('#pair-label').value='';
+    capBadge.textContent='已加入 ✓ 可繼續點兩點'; redrawCapRefs(); renderRefList();
+  };
+  $('#pair-cancel').onclick=()=>{ pending=null; $('#pair-input').style.display='none'; $('#pair-d').value=''; $('#pair-label').value=''; capBadge.textContent='點第一個參考點'; redrawCapRefs(); };
+  $('#f-gps-btn').onclick = ()=>{
+    if(!navigator.geolocation){ alert('此裝置不支援定位'); return; }
+    $('#f-gps').value='定位中…';
+    navigator.geolocation.getCurrentPosition(p=>{
+      const {latitude:la,longitude:lo,accuracy:ac}=p.coords;
+      $('#f-gps').value=`${la.toFixed(6)}, ${lo.toFixed(6)} ±${Math.round(ac)}m`;
+      $('#f-gps').dataset.lat=la; $('#f-gps').dataset.lng=lo; $('#f-gps').dataset.acc=Math.round(ac);
+    },e=>{ $('#f-gps').value='定位失敗'; }, {enableHighAccuracy:true,timeout:8000});
+  };
+  $('#cap-save').onclick = ()=>{
+    if(!cap.dataURL){ alert('請先取得施工前影像'); return; }
+    if(!cap.target){ alert('請先點擊畫面標出人孔中心'); return; }
+    const id=($('#f-id').value||'').trim()||suggestId();
+    const rec={
+      id, before_photo:cap.dataURL, target_px:cap.target,
+      camera_height_m: parseFloat($('#f-height').value)||null,
+      pole_note: $('#f-pole').value.trim(),
+      gps_prior: $('#f-gps').dataset.lat ? {lat:+$('#f-gps').dataset.lat,lng:+$('#f-gps').dataset.lng,acc:+$('#f-gps').dataset.acc} : null,
+      notes: $('#f-notes').value.trim(),
+      refs: cap.refs.map(rf=>({a:rf.a,b:rf.b,dist:rf.dist,label:rf.label})),
+      captured_at: new Date().toISOString()
+    };
+    const i=records.findIndex(r=>r.id===id);
+    if(i>=0){ if(!confirm(`已存在編號 ${id},要覆蓋嗎?`)) return; records[i]=rec; }
+    else records.unshift(rec);
+    save(); resetCapture();
+    alert(`已儲存 ${id}`);
+  };
+  $('#cap-reset').onclick = resetCapture;
+
+  function resetCapture(){
+    stopCamera(); cap={mode:null,dataURL:null,target:null,refs:[]}; pending=null;
+    capStage.style.display='none'; capVideo.style.display='none'; capBox.style.display='none';
+    $('#cap-shoot').style.display='none'; $('#cap-form').style.display='none';
+    ['f-id','f-height','f-pole','f-notes','f-gps'].forEach(k=>{$('#'+k).value='';});
+    delete $('#f-gps').dataset.lat;
+    $('#pair-input').style.display='none'; $('#ref-list').innerHTML='';
+    setClickMode('target'); redrawCapRefs();
+  }
+  function suggestId(){
+    const n=records.length+1; return 'MH-'+String(n).padStart(3,'0');
+  }
+
+  /* ================= RECOVER ================= */
+  const recSel=$('#rec-select'), recPanel=$('#rec-panel'),
+        recVideo=$('#rec-video'), recBaseImg=$('#rec-baseimg'),
+        recGhost=$('#rec-ghost'), recGhostImg=$('#rec-ghostimg'), recXhair=$('#rec-xhair');
+
+  function refreshSelect(){
+    const cur=recSel.value;
+    recSel.innerHTML = records.length
+      ? records.map(r=>`<option value="${r.id}">${r.id} · ${new Date(r.captured_at).toLocaleDateString()}</option>`).join('')
+      : '<option value="">— 尚無紀錄 —</option>';
+    if(records.length){ recSel.value = records.some(r=>r.id===cur)?cur:records[0].id; loadRecord(recSel.value); }
+    else recPanel.style.display='none';
+  }
+  recSel.onchange = ()=> loadRecord(recSel.value);
+
+  function loadRecord(id){
+    const r=records.find(x=>x.id===id); if(!r){ recPanel.style.display='none'; return; }
+    recPanel.style.display='block';
+    $('#rc-h').textContent = r.camera_height_m!=null ? r.camera_height_m+' m' : '—';
+    $('#rc-pole').textContent = r.pole_note || '—';
+    recGhostImg.src = r.before_photo;
+    recXhair.style.left=(r.target_px.x*100)+'%'; recXhair.style.top=(r.target_px.y*100)+'%';
+    const refs=r.refs||[];
+    $('#rc-refs').textContent = refs.length ? refs.length+' 組' : '—';
+    drawRefs($('#rec-refsvg'), $('#rec-reflbl'), refs, null);
+    resetGhostTransform();
+    // default base = camera; user may switch to a still
+    startRecCamera();
+  }
+  async function startRecCamera(){
+    recBaseImg.style.display='none'; recVideo.style.display='block';
+    $('#rec-base-badge').textContent='現況 · 相機';
+    await startCamera(recVideo);
+  }
+  $('#rec-cam').onclick = startRecCamera;
+  $('#rec-cur').onclick = ()=> pickFile('image/*', async(d)=>{
+    stopCamera(); recVideo.style.display='none';
+    recBaseImg.src = await downscale(d); recBaseImg.style.display='block';
+    $('#rec-base-badge').textContent='現況 · 照片';
+  });
+  $('#rec-recenter').onclick = resetGhostTransform;
+
+  function resetGhostTransform(){
+    ghost.px=0; ghost.py=0;
+    applyGhost();
+  }
+  function applyGhost(){
+    recGhost.style.opacity=ghost.op;
+    recGhost.style.transform=`translate(${ghost.px}px,${ghost.py}px)`;
+  }
+  $('#s-op').oninput=e=>{ ghost.op=e.target.value/100; $('#o-op').textContent=e.target.value+'%'; applyGhost(); };
+
+  // drag ghost to pan
+  (function(){
+    let drag=false,lx=0,ly=0;
+    const wrap=$('.ghost-wrap');
+    wrap.style.pointerEvents='auto';
+    const down=(x,y)=>{drag=true;lx=x;ly=y;};
+    const move=(x,y)=>{ if(!drag)return; ghost.px+=x-lx; ghost.py+=y-ly; lx=x; ly=y; applyGhost(); };
+    const up=()=>{drag=false;};
+    wrap.addEventListener('pointerdown',e=>{down(e.clientX,e.clientY);wrap.setPointerCapture(e.pointerId);});
+    wrap.addEventListener('pointermove',e=>move(e.clientX,e.clientY));
+    wrap.addEventListener('pointerup',up);
+    wrap.addEventListener('pointercancel',up);
+  })();
+
+  /* ================= RECORDS ================= */
+  function renderRecords(){
+    const list=$('#rec-list');
+    if(!records.length){ list.innerHTML='<div class="empty"><div class="big">尚無紀錄</div>到「登錄」分頁拍攝施工前影像並標記人孔。</div>'; return; }
+    list.innerHTML = records.map(r=>`
+      <div class="rec">
+        <img src="${r.before_photo}" alt="">
+        <div class="meta">
+          <div class="id">${r.id}</div>
+          <div class="sm">高 ${r.camera_height_m!=null?r.camera_height_m+'m':'—'} · 竿 ${r.pole_note||'—'}</div>
+          <div class="sm">${new Date(r.captured_at).toLocaleString()}</div>
+        </div>
+        <div class="acts">
+          <button class="go" data-go="${r.id}">回收</button>
+          <button data-del="${r.id}">刪除</button>
+        </div>
+      </div>`).join('');
+    list.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{
+      document.querySelector('nav button[data-view="recover"]').click();
+      recSel.value=b.dataset.go; loadRecord(b.dataset.go);
+    });
+    list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+      if(!confirm(`刪除 ${b.dataset.del}?`)) return;
+      records=records.filter(r=>r.id!==b.dataset.del); save(); renderRecords();
+    });
+  }
+  $('#rec-export').onclick = ()=>{
+    const blob=new Blob([JSON.stringify(records,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='manhole-records.json'; a.click(); URL.revokeObjectURL(a.href);
+  };
+  $('#rec-import').onclick = ()=> $('#rec-importfile').click();
+  $('#rec-importfile').onchange = function(){
+    readFile(this).then(d=>{
+      try{
+        const data=JSON.parse(d.split(',').length>1?atob(d.split(',')[1]):d);
+        const arr=Array.isArray(data)?data:[];
+        let added=0;
+        arr.forEach(r=>{ if(r.id && r.before_photo && !records.some(x=>x.id===r.id)){records.push(r);added++;} });
+        save(); renderRecords();
+        alert(`匯入 ${added} 筆`);
+      }catch(e){ alert('JSON 解析失敗'); }
+    });
+    this.value='';
+  };
+
+  window.addEventListener('beforeunload', stopCamera);
+})();
+</script>
+</body>
+</html>

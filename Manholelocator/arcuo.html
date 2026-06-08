@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>ArUco 3D 空間座標系還原工具</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background: #111; color: white; }
+        #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; z-index: 10; max-width: 300px; }
+        #canvasOutput { position: absolute; bottom: 10px; right: 10px; width: 320px; height: 180px; border: 2px solid #555; z-index: 10; }
+        #container3d { width: 100vw; height: 100vh; }
+        input[type="file"] { margin-top: 10px; color: white; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script async src="https://docs.opencv.org/4.5.4/opencv.js" id="opencv-js"></script>
+</head>
+<body>
+
+    <div id="info">
+        <h3>ArUco 3D 座標還原</h3>
+        <p>狀態: <span id="status">正在載入 OpenCV.js...</span></p>
+        <label>1. 設定實體 Tag 邊長 (米):</label>
+        <input type="number" id="markerSize" value="0.10" step="0.01" style="width: 60px;"><br><br>
+        <label>2. 載入空間影片:</label>
+        <input type="file" id="videoUpload" accept="video/*" disabled>
+        <div id="registry" style="margin-top:10px; font-size:12px; color:#aaa;">已註冊的 Tag: 無</div>
+    </div>
+
+    <canvas id="canvasOutput"></canvas>
+    <div id="container3d"></div>
+
+    <video id="video" style="display:none;" loop crossorigin="anonymous"></video>
+
+    <script>
+        // --- 全域變數 ---
+        let scene, camera3d, renderer, controls;
+        let videoElement = document.getElementById('video');
+        let canvasOutput = document.getElementById('canvasOutput');
+        let ctx2d = canvasOutput.getContext('2d');
+        let cvReady = false;
+        
+        // 儲存所有已定位的 Tag 的世界矩陣 (Key: TagID, Value: THREE.Matrix4)
+        let worldTags = {}; 
+        // 虛擬 3D 空間中用來呈現 Tag 與相機的模型群組
+        let markersGroup = new THREE.Group();
+        let cameraVisualizer;
+
+        // --- 1. 初始化 Three.js 3D 場景 ---
+        function init3D() {
+            const container = document.getElementById('container3d');
+            scene = new THREE.Scene();
+            scene.add(markersGroup);
+
+            camera3d = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 100);
+            camera3d.position.set(0, 2, 3);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera3d, renderer.domElement);
+            
+            // 加入網格與世界座標軸 (紅色:X, 綠色:Y, 藍色:Z)
+            const gridHelper = new THREE.GridHelper(10, 50, 0x444444, 0x222222);
+            gridHelper.position.y = -0.01; // 微調避免與原點 Tag 重疊
+            scene.add(gridHelper);
+            const axesHelper = new THREE.AxesHelper(0.5);
+            scene.add(axesHelper);
+
+            // 光源
+            const light = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(light);
+
+            // 建立相機在 3D 空間中的視覺化幾何體（角錐體）
+            const camGeo = new THREE.ConeGeometry(0.05, 0.1, 4);
+            camGeo.rotateX(Math.PI / 2);
+            const camMat = new THREE.MeshBasicMaterial({color: 0x00ff00, wireframe: true});
+            cameraVisualizer = new THREE.Mesh(camGeo, camMat);
+            scene.add(cameraVisualizer);
+
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera3d);
+        }
+
+        // --- 2. OpenCV.js 載入完成通知 ---
+        document.getElementById('opencv-js').addEventListener('load', () => {
+            cv.onRuntimeInitialized = () => {
+                cvReady = true;
+                document.getElementById('status').innerText = '系統就緒，請上傳影片。';
+                document.getElementById('videoUpload').disabled = false;
+                init3D();
+            };
+        });
+
+        // --- 3. 影片上傳與處理驅動 ---
+        document.getElementById('videoUpload').addEventListener('change', function(e) {
+            let file = e.target.files[0];
+            if (!file) return;
+            videoElement.src = URL.createObjectURL(file);
+            videoElement.play();
+            videoElement.addEventListener('loadedmetadata', () => {
+                canvasOutput.width = videoElement.videoWidth;
+                canvasOutput.height = videoElement.videoHeight;
+                // 啟動每幀處理
+                setTimeout(processVideo, 33);
+            });
+        });
+
+        // --- 4. 核心影像處理與 3D 還原演算法 ---
+        function processVideo() {
+            if (videoElement.paused || videoElement.ended) return;
+
+            // 讀取視訊訊號至 OpenCV Mat
+            ctx2d.drawImage(videoElement, 0, 0, canvasOutput.width, canvasOutput.height);
+            let src = cv.imread(canvasOutput);
+            let gray = new cv.Mat();
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+            // 設定 ArUco 字典 (這裡預設使用 4x4_50，可依據你的 Tag 修改)
+            let dictionary = cv.getPredefinedDictionary(cv.DICT_4X4_50);
+            let corners = new cv.MatVector();
+            let ids = new cv.Mat();
+            let rejectedImgPoints = new cv.MatVector();
+
+            // 偵測仿造標籤
+            cv.detectMarkers(gray, dictionary, corners, ids, new cv.DetectorParameters(), rejectedImgPoints);
+
+            if (ids.rows > 0) {
+                // 繪製 2D 畫面的框線
+                cv.drawDetectedMarkers(src, corners, ids);
+
+                // 模擬相機內參 (假定沒有嚴重畸變的標準鏡頭)
+                const width = canvasOutput.width;
+                const height = canvasOutput.height;
+                const f = Math.max(width, height); // 估算焦距
+                let cameraMatrix = cv.matFromArray(3, 3, cv.CV_64F, [
+                    f, 0, width / 2,
+                    0, f, height / 2,
+                    0, 0, 1
+                ]);
+                let distCoeffs = cv.matFromArray(5, 1, cv.CV_64F, [0, 0, 0, 0, 0]);
+
+                let markerSize = parseFloat(document.getElementById('markerSize').value);
+                let rvecs = new cv.Mat();
+                let tvecs = new cv.Mat();
+
+                // 估算畫面中所有 Tag 相對於當前相機的 Pose
+                cv.estimatePoseSingleMarkers(corners, markerSize, cameraMatrix, distCoeffs, rvecs, tvecs);
+
+                // 解析當前畫面抓到了哪些 ID
+                let currentFrameTags = {};
+                for (let i = 0; i < ids.rows; ++i) {
+                    let id = ids.data32S[i];
+                    
+                    // 提取旋轉和平移矩陣 (OpenCV 格式)
+                    let rvec = cv.matFromArray(3, 1, cv.CV_64F, [rvecs.doublePtr(0, i)[0], rvecs.doublePtr(0, i)[1], rvecs.doublePtr(0, i)[2]]);
+                    let tvec = cv.matFromArray(3, 1, cv.CV_64F, [tvecs.doublePtr(0, i)[0], tvecs.doublePtr(0, i)[1], tvecs.doublePtr(0, i)[2]]);
+                    
+                    // 轉為 3x3 旋轉矩陣
+                    let R = new cv.Mat();
+                    cv.Rodrigues(rvec, R);
+
+                    // 建構 Three.js 的 4x4 局部變換矩陣 (Camera -> Tag)
+                    let m = new THREE.Matrix4();
+                    m.set(
+                        R.doubleAt(0,0), R.doubleAt(0,1), R.doubleAt(0,2), tvec.doubleAt(0,0),
+                        -R.doubleAt(1,0), -R.doubleAt(1,1), -R.doubleAt(1,2), -tvec.doubleAt(1,0), // 影像座標系與3D空間Y軸相反，需取負號
+                        -R.doubleAt(2,0), -R.doubleAt(2,1), -R.doubleAt(2,2), -tvec.doubleAt(2,0), // Z軸朝向修正
+                        0, 0, 0, 1
+                    );
+                    
+                    currentFrameTags[id] = m;
+
+                    rvec.delete(); tvec.delete(); R.delete();
+                }
+
+                // --- 座標系對齊演算法邏輯 ---
+                
+                // 初始化狀況：如果看到 0 號 Tag 且世界原點尚未被建立
+                if (currentFrameTags[0] && !worldTags[0]) {
+                    worldTags[0] = new THREE.Matrix4(); // 單位矩陣，代表世界原點
+                    createVisualTag(0, worldTags[0]);
+                }
+
+                // 尋找「當前畫面」與「已知世界」的交集（尋找空間橋樑）
+                let anchorID = null;
+                for (let id in currentFrameTags) {
+                    if (worldTags[id] !== undefined) {
+                        anchorID = id; // 找到了已存在於 3D 空間的世界錨點
+                        break;
+                    }
+                }
+
+                if (anchorID !== null) {
+                    // 1. 計算相機在世界座標系中的位置
+                    // T_world_to_cam = T_world_to_anchor * (T_cam_to_anchor)^-1
+                    let T_cam_to_anchor = currentFrameTags[anchorID];
+                    let T_anchor_to_cam = new THREE.Matrix4().copy(T_cam_to_anchor).invert();
+                    let T_world_to_cam = new THREE.Matrix4().multiplyMatrices(worldTags[anchorID], T_anchor_to_cam);
+
+                    // 更新 3D 畫面的相機位置視覺化
+                    cameraVisualizer.position.setFromMatrixPosition(T_world_to_cam);
+                    cameraVisualizer.quaternion.setFromRotationMatrix(T_world_to_cam);
+
+                    // 2. 註冊新發現的 Tag 到世界座標系中
+                    for (let id in currentFrameTags) {
+                        if (worldTags[id] === undefined) {
+                            let T_cam_to_newTag = currentFrameTags[id];
+                            let T_world_to_newTag = new THREE.Matrix4().multiplyMatrices(T_world_to_cam, T_cam_to_newTag);
+                            
+                            worldTags[id] = T_world_to_newTag;
+                            createVisualTag(id, T_world_to_newTag);
+                        }
+                    }
+                }
+
+                // 釋放記憶體
+                cameraMatrix.delete(); distCoeffs.delete();
+                rvecs.delete(); tvecs.delete();
+            }
+
+            // 更新 UI 顯示已辨識的 Tag
+            document.getElementById('registry').innerText = "已註冊的世界 Tag ID: " + Object.keys(worldTags).join(', ');
+
+            // 顯示影像至右下角 Canvas
+            cv.imshow('canvasOutput', src);
+            
+            // 釋放記憶體避免記憶體流失 (Memory Leak)
+            src.delete(); gray.delete(); corners.delete(); ids.delete(); rejectedImgPoints.delete();
+
+            // 迴圈呼叫
+            setTimeout(processVideo, 33);
+        }
+
+        // --- 5. 在 3D 空間中繪製出 Tag 的方塊與 ID ---
+        function createVisualTag(id, matrix) {
+            let size = parseFloat(document.getElementById('markerSize').value);
+            const geometry = new THREE.BoxGeometry(size, 0.01, size);
+            // 0號原點為紅色，其他新註冊的為藍色
+            const color = (id == 0) ? 0xff0000 : 0x0088ff;
+            const material = new THREE.MeshLambertMaterial({ color: color });
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            // 套用世界矩陣
+            mesh.position.setFromMatrixPosition(matrix);
+            mesh.quaternion.setFromRotationMatrix(matrix);
+
+            // 加上簡易軸向指示
+            const axes = new THREE.AxesHelper(size * 0.7);
+            mesh.add(axes);
+
+            markersGroup.add(mesh);
+            document.getElementById('status').innerText = `已成功將 Tag ${id} 併入世界座標系！`;
+        }
+    </script>
+</body>
+</html>
