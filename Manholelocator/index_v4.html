@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>點位回溯 · 人孔影像定位 v4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101311; --panel:#171b18; --panel2:#1e231f; --line:#2c322d;
+    --txt:#e7e9e3; --mut:#9aa093; --dim:#6b7164;
+    --hv:#FFB400; --hv-d:#3a2d00; --ok:#34d399; --ok-d:#053024; --warn:#ff8c42;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    --disp:'Barlow Condensed',system-ui,sans-serif;
+    --body:'Barlow',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:var(--body)}
+  body{display:flex;flex-direction:column;overscroll-behavior:none}
+  button{font-family:var(--body);cursor:pointer}
+  .mono{font-family:var(--mono)}
+
+  header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header .logo{width:26px;height:26px;border:2px solid var(--hv);border-radius:50%;position:relative;flex:none}
+  header .logo::after{content:"";position:absolute;inset:6px;border-radius:50%;background:var(--hv)}
+  header h1{font-family:var(--disp);font-weight:700;font-size:20px;letter-spacing:.06em;text-transform:uppercase;margin:0;line-height:1}
+  header .sub{font-size:11px;color:var(--dim);letter-spacing:.18em;text-transform:uppercase;margin-top:2px}
+
+  nav{display:flex;background:var(--panel);border-bottom:1px solid var(--line)}
+  nav button{flex:1;background:none;border:none;color:var(--mut);font-family:var(--disp);font-weight:600;font-size:15px;letter-spacing:.08em;text-transform:uppercase;padding:12px 4px;border-bottom:2px solid transparent}
+  nav button.on{color:var(--hv);border-bottom-color:var(--hv)}
+
+  main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .view{display:none;padding:14px}
+  .view.on{display:block}
+
+  .stage{position:relative;width:100%;background:#000;border:1px solid var(--line);border-radius:10px;overflow:hidden;min-height:200px}
+  .stage video,.stage>img.base{display:block;width:100%;height:auto}
+  .ghost-wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;touch-action:none}
+  #rec-stage{touch-action:none}
+  .ghost-stage{position:relative;transform-origin:center center;will-change:transform}
+  .ghost-stage img{display:block;width:100%;height:auto}
+  .photo-box{position:relative;display:inline-block;width:100%}
+  .photo-box img{display:block;width:100%;height:auto;border-radius:10px}
+
+  .xhair{position:absolute;width:36px;height:36px;margin:-18px 0 0 -18px;pointer-events:none}
+  .xhair::before,.xhair::after{content:"";position:absolute;background:var(--hv)}
+  .xhair::before{left:50%;top:0;width:1.5px;height:100%;margin-left:-1px}
+  .xhair::after{top:50%;left:0;height:1.5px;width:100%;margin-top:-1px}
+  .xhair span{position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border:1.5px solid var(--hv);border-radius:50%;background:rgba(255,180,0,.12)}
+
+  /* 相機距離標籤 */
+  .camdist-lbl{
+    position:absolute;
+    background:rgba(255,180,0,.18);
+    border:1px solid var(--hv);
+    color:var(--hv);
+    font:600 11px/1 var(--mono);
+    padding:3px 7px;
+    border-radius:5px;
+    white-space:nowrap;
+    transform:translate(-50%,-130%);
+    pointer-events:none;
+  }
+  .camdist-cam{
+    position:absolute;
+    bottom:0;left:50%;
+    transform:translate(-50%,0);
+    pointer-events:none;
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    padding-bottom:6px;
+  }
+  .camdist-cam svg{width:13px;height:13px;stroke:var(--hv);fill:none;stroke-width:1.8;filter:drop-shadow(0 0 3px rgba(0,0,0,.7))}
+  .camdist-cam span{font:500 10px/1 var(--mono);color:var(--hv);background:rgba(0,0,0,.55);padding:2px 5px;border-radius:4px;letter-spacing:.04em}
+
+  .row{display:flex;gap:8px;margin:12px 0}
+  .row.wrap{flex-wrap:wrap}
+  .btn{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:12px;font-size:14px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:7px;transition:.12s}
+  .btn:active{transform:scale(.98)}
+  .btn.hv{background:var(--hv);color:#1a1500;border-color:var(--hv);font-weight:600}
+  .btn.ok{background:var(--ok);color:var(--ok-d);border-color:var(--ok);font-weight:600}
+  .btn.sm{flex:none;padding:8px 12px;font-size:13px}
+  .btn:disabled{opacity:.4}
+  .btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
+
+  .ctrl{margin:10px 0}
+  .ctrl label{display:flex;justify-content:space-between;font-size:12px;color:var(--mut);letter-spacing:.04em;margin-bottom:5px;text-transform:uppercase;font-family:var(--disp);font-weight:600}
+  .ctrl label b{font-family:var(--mono);color:var(--hv);font-weight:500}
+  input[type=range]{width:100%;height:30px;-webkit-appearance:none;background:none}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;background:var(--line);border-radius:2px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--hv);margin-top:-9px;border:3px solid var(--bg)}
+  input[type=range]::-moz-range-track{height:4px;background:var(--line);border-radius:2px}
+  input[type=range]::-moz-range-thumb{width:18px;height:18px;border:3px solid var(--bg);border-radius:50%;background:var(--hv)}
+
+  .field{margin:10px 0}
+  .field label{display:block;font-size:12px;color:var(--mut);font-family:var(--disp);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px}
+  .field input[type=text],.field input[type=number],.field textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:11px;font-size:15px;font-family:var(--body)}
+  .field input:focus,.field textarea:focus{outline:none;border-color:var(--hv)}
+  .field textarea{resize:vertical;min-height:54px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .chip{font-family:var(--mono);font-size:12px;background:var(--panel2);border:1px solid var(--line);color:var(--mut);padding:6px 10px;border-radius:7px}
+  .chip b{color:var(--hv);font-weight:500}
+  .chip.hi{border-color:var(--hv);background:var(--hv-d)}
+  .chip.hi b{color:#ffd56b}
+
+  .hint{font-size:12.5px;color:var(--dim);line-height:1.5;margin:8px 2px}
+  .hint b{color:var(--mut);font-weight:600}
+  .badge{position:absolute;top:8px;left:8px;z-index:5;font-family:var(--mono);font-size:11px;background:rgba(0,0,0,.6);color:var(--txt);padding:4px 9px;border-radius:6px;letter-spacing:.04em}
+  .badge.r{left:auto;right:8px}
+
+  .rec{display:flex;gap:11px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;align-items:center}
+  .rec img{width:64px;height:64px;object-fit:cover;border-radius:7px;background:#000;flex:none}
+  .rec .meta{flex:1;min-width:0}
+  .rec .meta .id{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:.04em}
+  .rec .meta .sm{font-size:12px;color:var(--mut);font-family:var(--mono);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rec .acts{display:flex;flex-direction:column;gap:6px}
+  .rec .acts button{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:7px 10px;font-size:12px}
+  .rec .acts button.go{background:var(--hv);color:#1a1500;border-color:var(--hv);font-weight:600}
+
+  .empty{text-align:center;color:var(--dim);padding:40px 20px;font-size:14px}
+  .empty .big{font-family:var(--disp);font-size:22px;color:var(--mut);margin-bottom:6px;letter-spacing:.05em}
+
+  .bar{display:flex;gap:8px;margin-top:6px}
+  .note{background:var(--hv-d);border:1px solid #5a4700;color:#ffd56b;font-size:12.5px;border-radius:8px;padding:10px 12px;line-height:1.5;margin:10px 0}
+  select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:11px;font-size:15px;font-family:var(--body)}
+  .sec-title{font-family:var(--disp);font-weight:700;font-size:16px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:18px 2px 6px}
+  .btn.on{outline:2px solid var(--hv);outline-offset:-2px;color:var(--hv)}
+
+  /* GPS 導航 */
+  .gps-positions{background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:6px 0}
+  .gps-pos-row{display:flex;align-items:baseline;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line)}
+  .gps-pos-row:last-child{border-bottom:none}
+  .gps-pos-label{font-family:var(--disp);font-weight:700;font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);flex:none;width:36px}
+  .gps-pos-coord{font-family:var(--mono);font-size:12px;color:var(--txt);flex:1;word-break:break-all}
+  .gps-pos-acc{font-family:var(--mono);font-size:11px;color:var(--dim);flex:none}
+  .gps-nav-card{display:flex;align-items:center;gap:16px;background:var(--panel2);border:1px solid var(--hv);border-radius:10px;padding:14px 16px;margin:8px 0}
+  .gps-arrow{font-size:52px;line-height:1;color:var(--hv);flex:none;min-width:56px;text-align:center;text-shadow:0 0 20px rgba(255,180,0,.4)}
+  .gps-nav-info{flex:1;min-width:0}
+  .gps-dist{font-family:var(--disp);font-weight:700;font-size:34px;letter-spacing:.03em;line-height:1;color:var(--txt)}
+  .gps-dist.near{color:var(--ok)}
+  .gps-bearing{font-family:var(--mono);font-size:13px;color:var(--mut);margin-top:5px}
+  .gps-acc-warn{font-family:var(--mono);font-size:11px;color:var(--warn);margin-top:4px}
+
+  /* 羅盤方位角 */
+  .compass-badge{background:rgba(0,0,0,.75);color:var(--hv);border:1px solid rgba(255,180,0,.4);letter-spacing:.06em}
+  .az-card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:6px 0}
+  .az-row{display:flex;align-items:center;gap:10px;padding:5px 0}
+  .az-row+.az-row{border-top:1px solid var(--line);padding-top:9px;margin-top:4px}
+  .az-label{font-family:var(--disp);font-weight:700;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);flex:none;width:48px}
+  .az-val{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--txt);line-height:1}
+  .az-dir{font-family:var(--mono);font-size:12px;color:var(--mut)}
+  .az-turn{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--hv);margin-top:10px;padding-top:10px;border-top:1px solid var(--line);text-align:center;letter-spacing:.03em}
+  .az-turn.ok{color:var(--ok)}
+  /* GPS 座標折疊 */
+  .gps-toggle{background:none;border:none;color:var(--dim);font-family:var(--mono);font-size:11px;padding:5px 2px;cursor:pointer;display:block;width:100%;text-align:left;letter-spacing:.04em}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"></div>
+  <div>
+    <h1>點位回溯</h1>
+    <div class="sub">Manhole Image Locator · v4</div>
+  </div>
+</header>
+
+<nav>
+  <button data-view="capture" class="on">登錄</button>
+  <button data-view="recover">回收</button>
+  <button data-view="records">紀錄</button>
+</nav>
+
+<main>
+
+  <!-- ============ 登錄(施工前) ============ -->
+  <section class="view on" id="v-capture">
+    <div class="row wrap" id="cap-source">
+      <button class="btn" id="cap-cam">
+        <svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L19 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="13" cy="12.5" r="3.5"/></svg>開啟相機</button>
+      <button class="btn" id="cap-file">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 15l5-5 4 4 3-3 4 4"/></svg>從相簿選</button>
+    </div>
+
+    <div class="stage" id="cap-stage" style="display:none">
+      <span class="badge" id="cap-badge">點擊畫面 → 標出人孔中心</span>
+      <span class="badge r compass-badge" id="cap-compass" style="display:none">— °</span>
+      <video id="cap-video" playsinline muted style="display:none"></video>
+      <div class="photo-box" id="cap-photobox" style="display:none">
+        <img id="cap-img" alt="施工前影像">
+        <div class="xhair" id="cap-xhair" style="display:none"><span></span></div>
+
+        <!-- 距離參考 (捲尺交會) -->
+        <svg id="cap-refsvg" viewBox="0 0 100 100" preserveAspectRatio="none"
+             style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
+        <div id="cap-reflbl" style="position:absolute;inset:0;pointer-events:none"></div>
+
+        <!-- 相機距目標距離線 -->
+        <svg id="cap-distsvg" viewBox="0 0 100 100" preserveAspectRatio="none"
+             style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
+        <div id="cap-distlbl" style="position:absolute;inset:0;pointer-events:none"></div>
+      </div>
+    </div>
+
+    <div class="row" id="cap-shoot" style="display:none">
+      <button class="btn hv" id="cap-snap">拍下這一張</button>
+      <button class="btn sm" id="cap-cancelcam">取消</button>
+    </div>
+
+    <div id="cap-form" style="display:none">
+      <div class="hint" id="cap-mark-hint"><b>步驟 2</b> — 用手指點畫面裡的人孔正中心,放下標記。可重複點擊修正。</div>
+
+      <!-- 標記模式 -->
+      <div class="field">
+        <label>標記模式</label>
+        <div class="row" style="margin:0 0 6px">
+          <button class="btn sm on" id="md-target">人孔中心</button>
+          <button class="btn sm" id="md-dist">加距離參考</button>
+        </div>
+        <div id="dist-hint" class="hint" style="display:none;margin:0 0 6px">
+          <b>距離參考(捲尺交會)</b> — 點兩個可辨識的固定特徵(或特徵↔人孔),輸入實測距離 m,可多組。
+        </div>
+        <div id="pair-input" style="display:none">
+          <div class="row" style="margin:0">
+            <input type="number" id="pair-d" step="0.01" inputmode="decimal" placeholder="實測距離 m"
+                   style="flex:2;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font-family:var(--mono);font-size:14px">
+            <input type="text" id="pair-label" placeholder="註記(選填)"
+                   style="flex:2;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font-family:var(--mono);font-size:13px">
+          </div>
+          <div class="row" style="margin:6px 0 0">
+            <button class="btn ok sm" id="pair-ok">加入</button>
+            <button class="btn sm" id="pair-cancel">取消</button>
+          </div>
+        </div>
+        <div id="ref-list"></div>
+      </div>
+
+      <!-- 紀錄編號 -->
+      <div class="field">
+        <label>紀錄編號</label>
+        <input type="text" id="f-id" placeholder="例如 MH-014">
+      </div>
+
+      <!-- 手機高度 / 相機距目標 / 標竿 -->
+      <div class="grid3">
+        <div class="field">
+          <label>手機離地高度 (m)</label>
+          <input type="number" id="f-height" step="0.01" inputmode="decimal" placeholder="1.45">
+        </div>
+        <div class="field">
+          <label>📷 距目標 (m)</label>
+          <input type="number" id="f-cam-dist" step="0.01" inputmode="decimal" placeholder="3.50">
+        </div>
+        <div class="field">
+          <label>標竿位置</label>
+          <input type="text" id="f-pole" placeholder="P-3">
+        </div>
+      </div>
+      <div class="hint" style="margin:-4px 2px 8px">
+        <b>📷 距目標</b> — 現場用捲尺實測相機腳下到人孔蓋中心的水平距離。輸入後會在照片上顯示標註線。
+      </div>
+
+      <!-- 拍照方位角 -->
+      <div class="field" id="f-azimuth-row" style="display:none">
+        <label>拍照方位角（與正北夾角）</label>
+        <div style="display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px 14px">
+          <span style="font-family:var(--mono);font-size:22px;font-weight:500;color:var(--hv)" id="f-az-deg">—</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--mut)" id="f-az-dir">開啟相機後自動取得</span>
+        </div>
+      </div>
+
+      <!-- GPS -->
+      <div class="field">
+        <label>概略 GPS(僅作索引)</label>
+        <div class="row" style="margin:0">
+          <input type="text" id="f-gps" placeholder="尚未取得" readonly
+                 style="flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:11px;font-family:var(--mono);font-size:13px">
+          <button class="btn sm" id="f-gps-btn">定位</button>
+        </div>
+      </div>
+
+      <!-- 備註 -->
+      <div class="field">
+        <label>備註</label>
+        <textarea id="f-notes" placeholder="周邊特徵、開挖深度、施工項目…"></textarea>
+      </div>
+
+      <div class="row">
+        <button class="btn ok" id="cap-save">儲存這筆紀錄</button>
+        <button class="btn sm" id="cap-reset">重來</button>
+      </div>
+    </div>
+
+    <div class="note">相機需在 <b>HTTPS</b> 或 localhost 下才能啟用;直接以 file:// 開啟時部分瀏覽器會擋,可改用「從相簿選」測試。</div>
+  </section>
+
+  <!-- ============ 回收(施工後) ============ -->
+  <section class="view" id="v-recover">
+    <div class="field">
+      <label>選擇要回收的紀錄</label>
+      <select id="rec-select"><option value="">— 尚無紀錄 —</option></select>
+    </div>
+
+    <div id="rec-panel" style="display:none">
+      <div class="chips">
+        <div class="chip">手機離地 <b id="rc-h">—</b></div>
+        <div class="chip hi">📷 距目標 <b id="rc-cam-dist">—</b></div>
+        <div class="chip">標竿 <b id="rc-pole">—</b></div>
+        <div class="chip">距離參考 <b id="rc-refs">—</b></div>
+      </div>
+      <!-- GPS 輔助定位（有記錄 GPS 時才顯示） -->
+      <div id="rc-gps-panel" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 6px">
+          <span style="font-family:var(--disp);font-weight:700;font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)">GPS 輔助定位</span>
+          <button class="btn sm" id="rc-gps-btn">⏹ 停止追蹤</button>
+        </div>
+
+        <!-- 導航卡（主要資訊，永遠顯示） -->
+        <div class="gps-nav-card" id="rc-gps-nav-card">
+          <div class="gps-arrow" id="rc-gps-arrow">…</div>
+          <div class="gps-nav-info">
+            <div class="gps-dist"     id="rc-gps-dist">定位中</div>
+            <div class="gps-bearing"  id="rc-gps-bearing"></div>
+            <div class="gps-acc-warn" id="rc-gps-acc-warn" style="display:none"></div>
+          </div>
+        </div>
+
+        <!-- 座標明細（預設折疊） -->
+        <button class="gps-toggle" id="rc-gps-toggle">▾ 顯示座標</button>
+        <div id="rc-gps-coords" style="display:none">
+          <div class="gps-positions">
+            <div class="gps-pos-row">
+              <span class="gps-pos-label">目前</span>
+              <span class="gps-pos-coord" id="rc-gps-cur-coord">定位中…</span>
+              <span class="gps-pos-acc"   id="rc-gps-cur-acc"></span>
+            </div>
+            <div class="gps-pos-row">
+              <span class="gps-pos-label">目標</span>
+              <span class="gps-pos-coord" id="rc-gps-stored">—</span>
+              <span class="gps-pos-acc"   id="rc-gps-stored-acc"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 拍照方位角（有記錄方位角時才顯示） -->
+      <div id="rc-az-panel" style="display:none">
+        <div style="font-family:var(--disp);font-weight:700;font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:12px 0 6px">拍照方位角</div>
+        <div class="az-card">
+          <div class="az-row">
+            <span class="az-label">施工前</span>
+            <span class="az-val" id="rc-az-stored">—</span>
+            <span class="az-dir" id="rc-az-stored-dir"></span>
+          </div>
+          <div class="az-row">
+            <span class="az-label">目前</span>
+            <span class="az-val" id="rc-az-cur">—</span>
+            <span class="az-dir" id="rc-az-cur-dir"></span>
+          </div>
+          <div class="az-turn" id="rc-az-turn">等待羅盤…</div>
+        </div>
+      </div>
+
+      <div class="hint">
+        <b>對齊方式</b> — 把標竿插回同一點、手機回到記錄高度、保持相同水平距離,先讓畫面構圖接近舊照;
+        再拖動殘影、讓存活特徵與殘影重合。重合的瞬間,橘色十字就指著人孔。
+        殘影上的虛線標示施工前相機到人孔的距離。
+      </div>
+
+      <div class="stage" id="rec-stage">
+        <span class="badge" id="rec-base-badge">現況</span>
+        <span class="badge r">殘影 = 施工前</span>
+        <video id="rec-video" playsinline muted style="display:none"></video>
+        <img class="base" id="rec-baseimg" style="display:none" alt="現況">
+        <div class="ghost-wrap">
+          <div class="ghost-stage" id="rec-ghost">
+            <img id="rec-ghostimg" alt="施工前殘影">
+            <div class="xhair" id="rec-xhair"><span></span></div>
+
+            <!-- 捲尺參考 -->
+            <svg id="rec-refsvg" viewBox="0 0 100 100" preserveAspectRatio="none"
+                 style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
+            <div id="rec-reflbl" style="position:absolute;inset:0;pointer-events:none"></div>
+
+            <!-- 相機距目標距離線 -->
+            <svg id="rec-distsvg" viewBox="0 0 100 100" preserveAspectRatio="none"
+                 style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
+            <div id="rec-distlbl" style="position:absolute;inset:0;pointer-events:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn sm" id="rec-cam">
+          <svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L19 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="13" cy="12.5" r="3.5"/></svg>開啟相機</button>
+        <button class="btn sm" id="rec-recenter">歸位</button>
+      </div>
+
+      <div class="ctrl">
+        <label>殘影濃度 <b id="o-op">55%</b></label>
+        <input type="range" id="s-op" min="0" max="100" value="55">
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 紀錄 ============ -->
+  <section class="view" id="v-records">
+    <div class="row">
+      <button class="btn sm" id="rec-export">匯出 JSON</button>
+      <button class="btn sm" id="rec-import">匯入 JSON</button>
+      <input type="file" id="rec-importfile" accept="application/json" style="display:none">
+    </div>
+    <div id="rec-list"></div>
+  </section>
+
+</main>
+
+<canvas id="scratch" style="display:none"></canvas>
+
+<script>
+"use strict";
+(function(){
+  const $ = s => document.querySelector(s);
+  const STORE = 'manhole_locator_records_v4';
+
+  let records = load();
+  let stream = null;
+  let cap = { mode:null, dataURL:null, target:null, refs:[] };
+  let clickMode = 'target', pending = null;
+  let ghost = { op:0.55, px:0, py:0 };
+  let rcGpsWatchId = null;   // watchPosition ID
+  let rcGpsStoredPos = null; // {lat,lng,acc} from record
+  // 羅盤
+  let compassHandler = null;
+  let compassHeading = null;
+  let captureAzimuth = null; // 拍照時鎖定的方位角
+  let recAzStored = null;    // 回收記錄的方位角
+
+  /* ---------- storage ---------- */
+  function load(){ try{ return JSON.parse(localStorage.getItem(STORE)||'[]'); }catch(e){ return []; } }
+  function save(){ try{ localStorage.setItem(STORE, JSON.stringify(records)); }catch(e){ alert('儲存失敗:可能超出瀏覽器空間,請先匯出備份。'); } }
+
+  /* ---------- nav ---------- */
+  document.querySelectorAll('nav button').forEach(b=>{
+    b.onclick = ()=>{
+      document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+      document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      $('#v-'+b.dataset.view).classList.add('on');
+      stopCamera(); stopCompass();
+      if(rcGpsWatchId!=null){ navigator.geolocation.clearWatch(rcGpsWatchId); rcGpsWatchId=null; }
+      if(b.dataset.view==='records') renderRecords();
+      if(b.dataset.view==='recover') refreshSelect();
+    };
+  });
+
+  /* ---------- camera helpers ---------- */
+  async function startCamera(videoEl){
+    stopCamera();
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
+      videoEl.srcObject = stream; await videoEl.play();
+      return true;
+    }catch(e){ alert('無法開啟相機:'+e.message+'\n請改用照片上傳,或在 HTTPS 環境下使用。'); return false; }
+  }
+  function stopCamera(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
+
+  /* ---------- 羅盤 ---------- */
+  // 偏好 deviceorientationabsolute（Android 真北），退一步用 deviceorientation（iOS webkitCompassHeading）
+  const COMPASS_EVT = ('ondeviceorientationabsolute' in window) ? 'deviceorientationabsolute' : 'deviceorientation';
+  function parseHeading(e){
+    if(e.webkitCompassHeading!=null) return e.webkitCompassHeading;          // iOS
+    if(e.alpha!=null) return (360-e.alpha+360)%360;                          // Android absolute
+    return null;
+  }
+  function azDir(deg){
+    const d=['北','北偏東','東','南偏東','南','南偏西','西','北偏西'];
+    return d[Math.round(deg/45)%8];
+  }
+  function turnInfo(stored, cur){
+    let diff=(stored-cur+360)%360; if(diff>180) diff-=360;
+    const abs=Math.abs(Math.round(diff));
+    if(abs<=5) return {text:'✓ 方向已對齊', ok:true};
+    return {text:(diff>0?'→ 向右轉 ':'← 向左轉 ')+abs+'°', ok:false};
+  }
+  async function startCompass(onHeading){
+    // iOS 13+ 需要授權
+    if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+      try{
+        const r=await DeviceOrientationEvent.requestPermission();
+        if(r!=='granted'){ alert('請授予「動作與方向」權限才能使用羅盤。'); return false; }
+      }catch(e){ return false; }
+    }
+    stopCompass();
+    compassHandler=e=>{ const h=parseHeading(e); if(h!=null){compassHeading=Math.round(h); onHeading(compassHeading);} };
+    window.addEventListener(COMPASS_EVT, compassHandler, true);
+    return true;
+  }
+  function stopCompass(){
+    if(compassHandler){ window.removeEventListener(COMPASS_EVT, compassHandler, true); compassHandler=null; }
+  }
+
+  function downscale(srcDataURL, max=1280, q=0.82){
+    return new Promise(res=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let {width:w, height:h} = img;
+        const s = Math.min(1, max/Math.max(w,h));
+        w=Math.round(w*s); h=Math.round(h*s);
+        const c=$('#scratch'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        res(c.toDataURL('image/jpeg', q));
+      };
+      img.src = srcDataURL;
+    });
+  }
+  function frameToDataURL(videoEl){
+    const c=$('#scratch'); c.width=videoEl.videoWidth; c.height=videoEl.videoHeight;
+    c.getContext('2d').drawImage(videoEl,0,0);
+    return c.toDataURL('image/jpeg',0.85);
+  }
+  function readFile(input){
+    return new Promise((res,rej)=>{
+      const f=input.files&&input.files[0]; if(!f){rej();return;}
+      const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f);
+    });
+  }
+  function pickFile(accept,cb){
+    const i=document.createElement('input'); i.type='file'; i.accept=accept||'image/*';
+    i.onchange=()=>readFile(i).then(cb).catch(()=>{}); i.click();
+  }
+
+  /* ================= CAPTURE ================= */
+  const capStage=$('#cap-stage'), capVideo=$('#cap-video'), capBox=$('#cap-photobox'),
+        capImg=$('#cap-img'), capXhair=$('#cap-xhair'), capBadge=$('#cap-badge');
+
+  $('#cap-cam').onclick = async ()=>{
+    capStage.style.display='block'; capVideo.style.display='block';
+    capBox.style.display='none'; $('#cap-shoot').style.display='flex';
+    capBadge.textContent='對好施工前畫面 → 拍下';
+    await startCamera(capVideo);
+    // 啟動羅盤，即時顯示方位角 badge
+    captureAzimuth=null;
+    startCompass(h=>{
+      $('#cap-compass').textContent=h+'° '+azDir(h);
+      $('#cap-compass').style.display='block';
+    });
+  };
+  $('#cap-file').onclick = ()=> pickFile('image/*', async (d)=>{ setCapturePhoto(await downscale(d)); });
+  $('#cap-snap').onclick = async ()=>{
+    if(!stream) return;
+    captureAzimuth = compassHeading; // 鎖定拍照當下的方位角
+    const d = frameToDataURL(capVideo); stopCamera();
+    capVideo.style.display='none'; $('#cap-shoot').style.display='none';
+    setCapturePhoto(await downscale(d));
+  };
+  $('#cap-cancelcam').onclick = ()=>{ stopCamera(); resetCapture(); };
+
+  function setCapturePhoto(dataURL){
+    cap.dataURL=dataURL; cap.target=null; cap.refs=[]; pending=null;
+    stopCamera(); stopCompass();
+    capVideo.style.display='none';
+    $('#cap-compass').style.display='none';
+    capStage.style.display='block'; capBox.style.display='inline-block';
+    capImg.src=dataURL; capXhair.style.display='none';
+    capBadge.textContent='點擊畫面 → 標出人孔中心';
+    $('#cap-shoot').style.display='none';
+    $('#cap-form').style.display='block';
+    clearCapDist();
+    // 顯示方位角欄
+    if(captureAzimuth!=null){
+      $('#f-az-deg').textContent = captureAzimuth+'°';
+      $('#f-az-dir').textContent = azDir(captureAzimuth);
+      $('#f-azimuth-row').style.display='block';
+    } else {
+      $('#f-azimuth-row').style.display='none';
+    }
+    setClickMode('target'); renderRefList(); redrawCapRefs();
+    if(!$('#f-id').value) $('#f-id').value = suggestId();
+  }
+
+  capBox.onclick = (e)=>{
+    const r=capImg.getBoundingClientRect();
+    const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+    if(x<0||x>1||y<0||y>1) return;
+    if(clickMode==='target'){
+      cap.target={x:+x.toFixed(4), y:+y.toFixed(4)};
+      capXhair.style.display='block';
+      capXhair.style.left=(x*100)+'%'; capXhair.style.top=(y*100)+'%';
+      capBadge.textContent='人孔中心已標記 ✓';
+      redrawCapDist(); // 重繪距離線
+    } else {
+      if(pending && pending.b) return;
+      const p={x:+x.toFixed(4), y:+y.toFixed(4)};
+      if(!pending){ pending={a:p}; capBadge.textContent='點第二個參考點'; }
+      else { pending.b=p; $('#pair-input').style.display='block'; capBadge.textContent='輸入兩點實測距離'; $('#pair-d').focus(); }
+      redrawCapRefs();
+    }
+  };
+
+  /* ---------- distance references (捲尺交會) ---------- */
+  const SVGNS='http://www.w3.org/2000/svg';
+  function drawRefs(svg, lbl, refs, pend){
+    while(svg.firstChild) svg.removeChild(svg.firstChild); lbl.innerHTML='';
+    const line=(a,b,c)=>{
+      const l=document.createElementNS(SVGNS,'line');
+      l.setAttribute('x1',a.x*100); l.setAttribute('y1',a.y*100);
+      l.setAttribute('x2',b.x*100); l.setAttribute('y2',b.y*100);
+      l.setAttribute('stroke',c||'#ff8c6b'); l.setAttribute('stroke-width','2');
+      l.setAttribute('vector-effect','non-scaling-stroke'); svg.appendChild(l);
+    };
+    const dot=(p,c)=>{
+      const e=document.createElement('div');
+      e.style.cssText='position:absolute;left:'+(p.x*100)+'%;top:'+(p.y*100)+'%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:'+(c||'#ff8c6b')+';box-shadow:0 0 0 1.5px rgba(0,0,0,.55)';
+      lbl.appendChild(e);
+    };
+    const tag=(p,t)=>{
+      const e=document.createElement('div');
+      e.textContent=t;
+      e.style.cssText='position:absolute;left:'+(p.x*100)+'%;top:'+(p.y*100)+'%;transform:translate(-50%,-50%);background:rgba(0,0,0,.72);color:#fff;font:600 12px/1 monospace;padding:3px 6px;border-radius:5px;white-space:nowrap';
+      lbl.appendChild(e);
+    };
+    refs.forEach(rf=>{
+      line(rf.a,rf.b); dot(rf.a); dot(rf.b);
+      tag({x:(rf.a.x+rf.b.x)/2,y:(rf.a.y+rf.b.y)/2},(rf.label?rf.label+' · ':'')+rf.dist+' m');
+    });
+    if(pend){ if(pend.a) dot(pend.a,'#FFB400'); if(pend.b){ dot(pend.b,'#FFB400'); line(pend.a,pend.b,'#FFB400'); } }
+  }
+  function redrawCapRefs(){ drawRefs($('#cap-refsvg'), $('#cap-reflbl'), cap.refs, pending); }
+
+  function renderRefList(){
+    const el=$('#ref-list');
+    if(!cap.refs.length){ el.innerHTML=''; return; }
+    el.innerHTML='<div style="font:700 12px var(--disp);color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 5px">距離參考 ('+cap.refs.length+')</div>'+
+      cap.refs.map((rf,i)=>`<div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-bottom:6px;font-family:var(--mono);font-size:13px">
+        <span style="flex:1">${rf.label?rf.label+' · ':''}<b style="color:var(--hv)">${rf.dist} m</b></span>
+        <button data-rdel="${i}" style="background:none;border:1px solid var(--line);color:var(--mut);border-radius:6px;padding:4px 9px;font-size:12px">刪</button>
+      </div>`).join('');
+    el.querySelectorAll('[data-rdel]').forEach(b=>b.onclick=()=>{ cap.refs.splice(+b.dataset.rdel,1); redrawCapRefs(); renderRefList(); });
+  }
+
+  function setClickMode(m){
+    clickMode=m; pending=null; $('#pair-input').style.display='none';
+    $('#md-target').classList.toggle('on',m==='target');
+    $('#md-dist').classList.toggle('on',m==='dist');
+    $('#dist-hint').style.display = m==='dist'?'block':'none';
+    capBadge.textContent = m==='dist' ? '點第一個參考點' : '點擊畫面 → 標出人孔中心';
+    redrawCapRefs();
+  }
+  $('#md-target').onclick=()=>setClickMode('target');
+  $('#md-dist').onclick=()=>setClickMode('dist');
+  $('#pair-ok').onclick=()=>{
+    const d=parseFloat($('#pair-d').value);
+    if(!(d>0)){ alert('請輸入實測距離(公尺)'); return; }
+    if(!pending||!pending.a||!pending.b){ $('#pair-input').style.display='none'; return; }
+    cap.refs.push({a:pending.a,b:pending.b,dist:+d.toFixed(3),label:$('#pair-label').value.trim()});
+    pending=null; $('#pair-input').style.display='none'; $('#pair-d').value=''; $('#pair-label').value='';
+    capBadge.textContent='已加入 ✓ 可繼續點兩點'; redrawCapRefs(); renderRefList();
+  };
+  $('#pair-cancel').onclick=()=>{
+    pending=null; $('#pair-input').style.display='none';
+    $('#pair-d').value=''; $('#pair-label').value='';
+    capBadge.textContent='點第一個參考點'; redrawCapRefs();
+  };
+
+  /* ---------- 相機距目標距離 線 ---------- */
+  /**
+   * drawCamDist(svg, lbl, target, distM)
+   * target : {x, y} 0..1 (人孔中心)
+   * distM  : number (公尺)
+   *
+   * 畫面底部中央 = 相機腳下投影點 (x=0.5, y=1.0)
+   * 以虛線連到人孔中心，並標示距離。
+   */
+  function drawCamDist(svg, lbl, target, distM){
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+    lbl.innerHTML='';
+    if(!target || !distM || distM <= 0) return;
+
+    const cam = {x:0.5, y:1.0};
+    const tgt = target;
+
+    // 虛線
+    const line = document.createElementNS(SVGNS,'line');
+    line.setAttribute('x1', cam.x*100); line.setAttribute('y1', cam.y*100);
+    line.setAttribute('x2', tgt.x*100); line.setAttribute('y2', tgt.y*100);
+    line.setAttribute('stroke','#FFB400');
+    line.setAttribute('stroke-width','2');
+    line.setAttribute('stroke-dasharray','5 3');
+    line.setAttribute('vector-effect','non-scaling-stroke');
+    svg.appendChild(line);
+
+    // 相機端小圓點
+    const camDot = document.createElementNS(SVGNS,'circle');
+    camDot.setAttribute('cx', cam.x*100); camDot.setAttribute('cy', cam.y*100);
+    camDot.setAttribute('r','1.5');
+    camDot.setAttribute('fill','#FFB400');
+    camDot.setAttribute('vector-effect','non-scaling-stroke');
+    svg.appendChild(camDot);
+
+    // 距離標籤 (放在線段 60% 處，避開人孔標記)
+    const lx = cam.x + (tgt.x - cam.x) * 0.60;
+    const ly = cam.y + (tgt.y - cam.y) * 0.60;
+    const labelEl = document.createElement('div');
+    labelEl.className = 'camdist-lbl';
+    labelEl.textContent = '📷 ' + distM.toFixed(2) + ' m';
+    labelEl.style.left = (lx*100)+'%';
+    labelEl.style.top  = (ly*100)+'%';
+    lbl.appendChild(labelEl);
+
+    // 相機圖示（底部中央）
+    const camIcon = document.createElement('div');
+    camIcon.className = 'camdist-cam';
+    camIcon.innerHTML = `
+      <svg viewBox="0 0 24 24">
+        <path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L19 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        <circle cx="13" cy="12.5" r="3.5"/>
+      </svg>
+      <span>相機</span>`;
+    lbl.appendChild(camIcon);
+  }
+
+  function clearCapDist(){
+    const svg=$('#cap-distsvg'), lbl=$('#cap-distlbl');
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+    lbl.innerHTML='';
+  }
+  function redrawCapDist(){
+    const distM = parseFloat($('#f-cam-dist').value);
+    drawCamDist($('#cap-distsvg'), $('#cap-distlbl'), cap.target, distM);
+  }
+
+  // 即時更新距離線（當使用者輸入距離時）
+  $('#f-cam-dist').addEventListener('input', redrawCapDist);
+
+  /* ---------- GPS ---------- */
+  $('#f-gps-btn').onclick = ()=>{
+    if(!navigator.geolocation){ alert('此裝置不支援定位'); return; }
+    $('#f-gps').value='定位中…';
+    navigator.geolocation.getCurrentPosition(p=>{
+      const {latitude:la,longitude:lo,accuracy:ac}=p.coords;
+      $('#f-gps').value=`${la.toFixed(6)}, ${lo.toFixed(6)} ±${Math.round(ac)}m`;
+      $('#f-gps').dataset.lat=la; $('#f-gps').dataset.lng=lo; $('#f-gps').dataset.acc=Math.round(ac);
+    },()=>{ $('#f-gps').value='定位失敗'; }, {enableHighAccuracy:true,timeout:8000});
+  };
+
+  /* ---------- 儲存 ---------- */
+  $('#cap-save').onclick = ()=>{
+    if(!cap.dataURL){ alert('請先取得施工前影像'); return; }
+    if(!cap.target){ alert('請先點擊畫面標出人孔中心'); return; }
+    const id=($('#f-id').value||'').trim()||suggestId();
+    const rec={
+      id,
+      before_photo: cap.dataURL,
+      target_px: cap.target,
+      camera_height_m: parseFloat($('#f-height').value)||null,
+      camera_dist_m:   parseFloat($('#f-cam-dist').value)||null,
+      camera_azimuth_deg: captureAzimuth,
+      pole_note: $('#f-pole').value.trim(),
+      gps_prior: $('#f-gps').dataset.lat
+        ? {lat:+$('#f-gps').dataset.lat, lng:+$('#f-gps').dataset.lng, acc:+$('#f-gps').dataset.acc}
+        : null,
+      notes: $('#f-notes').value.trim(),
+      refs: cap.refs.map(rf=>({a:rf.a,b:rf.b,dist:rf.dist,label:rf.label})),
+      captured_at: new Date().toISOString()
+    };
+    const i=records.findIndex(r=>r.id===id);
+    if(i>=0){ if(!confirm(`已存在編號 ${id},要覆蓋嗎?`)) return; records[i]=rec; }
+    else records.unshift(rec);
+    save(); resetCapture();
+    alert(`已儲存 ${id}`);
+  };
+  $('#cap-reset').onclick = resetCapture;
+
+  function resetCapture(){
+    stopCamera(); stopCompass();
+    captureAzimuth=null;
+    cap={mode:null,dataURL:null,target:null,refs:[]}; pending=null;
+    capStage.style.display='none'; capVideo.style.display='none'; capBox.style.display='none';
+    $('#cap-compass').style.display='none';
+    $('#cap-shoot').style.display='none'; $('#cap-form').style.display='none';
+    ['f-id','f-height','f-cam-dist','f-pole','f-notes','f-gps'].forEach(k=>{ $('#'+k).value=''; });
+    delete $('#f-gps').dataset.lat;
+    $('#f-az-deg').textContent='—'; $('#f-az-dir').textContent='開啟相機後自動取得';
+    $('#f-azimuth-row').style.display='none';
+    $('#pair-input').style.display='none'; $('#ref-list').innerHTML='';
+    clearCapDist();
+    setClickMode('target'); redrawCapRefs();
+  }
+  function suggestId(){
+    const n=records.length+1; return 'MH-'+String(n).padStart(3,'0');
+  }
+
+  /* ================= RECOVER ================= */
+  const recSel=$('#rec-select'), recPanel=$('#rec-panel'),
+        recVideo=$('#rec-video'), recBaseImg=$('#rec-baseimg'),
+        recGhost=$('#rec-ghost'), recGhostImg=$('#rec-ghostimg'), recXhair=$('#rec-xhair'),
+        recStage=$('#rec-stage');
+
+  // Ghost contain-fit
+  let ghostNatW=0, ghostNatH=0;
+  function fitGhost(){
+    if(!ghostNatW||!ghostNatH) return;
+    const sw=recStage.clientWidth, sh=recStage.clientHeight;
+    if(!sw||!sh) return;
+    const scale=Math.min(sw/ghostNatW, sh/ghostNatH);
+    recGhost.style.width=Math.round(ghostNatW*scale)+'px';
+  }
+  recGhostImg.onload=()=>{ ghostNatW=recGhostImg.naturalWidth; ghostNatH=recGhostImg.naturalHeight; fitGhost(); };
+  if(window.ResizeObserver) new ResizeObserver(fitGhost).observe(recStage);
+
+  function refreshSelect(){
+    const cur=recSel.value;
+    recSel.innerHTML = records.length
+      ? records.map(r=>`<option value="${r.id}">${r.id} · ${new Date(r.captured_at).toLocaleDateString()}</option>`).join('')
+      : '<option value="">— 尚無紀錄 —</option>';
+    if(records.length){ recSel.value = records.some(r=>r.id===cur)?cur:records[0].id; loadRecord(recSel.value); }
+    else recPanel.style.display='none';
+  }
+  recSel.onchange = ()=> loadRecord(recSel.value);
+
+  function loadRecord(id){
+    const r=records.find(x=>x.id===id); if(!r){ recPanel.style.display='none'; return; }
+    recPanel.style.display='block';
+    $('#rc-h').textContent        = r.camera_height_m!=null ? r.camera_height_m+' m' : '—';
+    $('#rc-cam-dist').textContent = r.camera_dist_m!=null   ? r.camera_dist_m+' m'   : '—';
+    $('#rc-pole').textContent     = r.pole_note || '—';
+    recGhostImg.src = r.before_photo;
+    recXhair.style.left=(r.target_px.x*100)+'%'; recXhair.style.top=(r.target_px.y*100)+'%';
+    const refs=r.refs||[];
+    $('#rc-refs').textContent = refs.length ? refs.length+' 組' : '—';
+    drawRefs($('#rec-refsvg'), $('#rec-reflbl'), refs, null);
+    drawCamDist($('#rec-distsvg'), $('#rec-distlbl'), r.target_px, r.camera_dist_m);
+    resetGhostTransform();
+    startRecCamera();
+
+    // GPS 導航
+    stopGpsWatch();
+    if(r.gps_prior){
+      rcGpsStoredPos = r.gps_prior;
+      $('#rc-gps-stored').textContent     = r.gps_prior.lat.toFixed(6)+', '+r.gps_prior.lng.toFixed(6);
+      $('#rc-gps-stored-acc').textContent = r.gps_prior.acc ? '±'+r.gps_prior.acc+'m' : '';
+      $('#rc-gps-cur-coord').textContent  = '定位中…';
+      $('#rc-gps-cur-acc').textContent    = '';
+      $('#rc-gps-nav-card').style.display = 'none';
+      $('#rc-gps-coords').style.display   = 'none';
+      $('#rc-gps-toggle').textContent     = '▾ 顯示座標';
+      $('#rc-gps-panel').style.display    = 'block';
+      startGpsWatch(); // 自動開始追蹤
+    } else {
+      rcGpsStoredPos = null;
+      $('#rc-gps-panel').style.display = 'none';
+    }
+
+    // 方位角面板
+    stopCompass();
+    if(r.camera_azimuth_deg!=null){
+      recAzStored = r.camera_azimuth_deg;
+      $('#rc-az-stored').textContent    = r.camera_azimuth_deg+'°';
+      $('#rc-az-stored-dir').textContent= azDir(r.camera_azimuth_deg);
+      $('#rc-az-cur').textContent       = '—';
+      $('#rc-az-cur-dir').textContent   = '';
+      $('#rc-az-turn').textContent      = '等待羅盤…';
+      $('#rc-az-turn').className        = 'az-turn';
+      $('#rc-az-panel').style.display   = 'block';
+      startCompass(updateRecAzimuth);
+    } else {
+      recAzStored = null;
+      $('#rc-az-panel').style.display = 'none';
+    }
+  }
+
+  async function startRecCamera(){
+    recBaseImg.style.display='none'; recVideo.style.display='block';
+    $('#rec-base-badge').textContent='現況 · 相機';
+    await startCamera(recVideo);
+    requestAnimationFrame(fitGhost);
+  }
+  $('#rec-cam').onclick = startRecCamera;
+  $('#rec-recenter').onclick = resetGhostTransform;
+
+  function resetGhostTransform(){
+    ghost.px=0; ghost.py=0;
+    applyGhost();
+  }
+  function applyGhost(){
+    recGhost.style.opacity=ghost.op;
+    recGhost.style.transform=`translate(${ghost.px}px,${ghost.py}px)`;
+  }
+  $('#s-op').oninput=e=>{ ghost.op=e.target.value/100; $('#o-op').textContent=e.target.value+'%'; applyGhost(); };
+
+  /* ---------- GPS 輔助定位 ---------- */
+  function haversine(lat1,lng1,lat2,lng2){
+    const R=6371000, r=d=>d*Math.PI/180;
+    const a=Math.sin(r(lat2-lat1)/2)**2+Math.cos(r(lat1))*Math.cos(r(lat2))*Math.sin(r(lng2-lng1)/2)**2;
+    return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  }
+  function calcBearing(lat1,lng1,lat2,lng2){
+    const r=d=>d*Math.PI/180;
+    const y=Math.sin(r(lng2-lng1))*Math.cos(r(lat2));
+    const x=Math.cos(r(lat1))*Math.sin(r(lat2))-Math.sin(r(lat1))*Math.cos(r(lat2))*Math.cos(r(lng2-lng1));
+    return(Math.atan2(y,x)*180/Math.PI+360)%360;
+  }
+  function bearingInfo(deg){
+    const arrows=['↑','↗','→','↘','↓','↙','←','↖'];
+    const dirs  =['北','北偏東','東','南偏東','南','南偏西','西','北偏西'];
+    const i=Math.round(deg/45)%8;
+    return {arrow:arrows[i], dir:dirs[i], deg:Math.round(deg)};
+  }
+  function fmtDist(m){ return m<1000 ? Math.round(m)+' m' : (m/1000).toFixed(2)+' km'; }
+
+  function stopGpsWatch(){
+    if(rcGpsWatchId!=null){ navigator.geolocation.clearWatch(rcGpsWatchId); rcGpsWatchId=null; }
+    const btn=$('#rc-gps-btn');
+    if(btn){ btn.textContent='📍 重新追蹤'; }
+  }
+
+  function startGpsWatch(){
+    if(!navigator.geolocation){ return; }
+    stopGpsWatch();
+    $('#rc-gps-btn').textContent='⏹ 停止追蹤';
+    rcGpsWatchId = navigator.geolocation.watchPosition(
+      updateGpsNav,
+      ()=>{ $('#rc-gps-cur-coord').textContent='定位失敗'; stopGpsWatch(); },
+      {enableHighAccuracy:true, maximumAge:2000}
+    );
+  }
+
+  function updateGpsNav(pos){
+    if(!rcGpsStoredPos) return;
+    const {latitude:cLat, longitude:cLng, accuracy:cAcc} = pos.coords;
+    const {lat:sLat, lng:sLng, acc:sAcc=0} = rcGpsStoredPos;
+
+    // 更新目前位置欄
+    $('#rc-gps-cur-coord').textContent = cLat.toFixed(6)+', '+cLng.toFixed(6);
+    $('#rc-gps-cur-acc').textContent   = '±'+Math.round(cAcc)+'m';
+
+    // 計算距離與方位
+    const dist   = haversine(cLat, cLng, sLat, sLng);
+    const brg    = calcBearing(cLat, cLng, sLat, sLng);
+    const {arrow, dir, deg} = bearingInfo(brg);
+    const maxAcc = Math.max(cAcc, sAcc);
+    const arrived  = dist < 3;
+    const inRange  = !arrived && dist < maxAcc;
+
+    // 更新導航卡片
+    const distEl    = $('#rc-gps-dist');
+    const warnEl    = $('#rc-gps-acc-warn');
+    if(arrived){
+      distEl.textContent='✓ 已到達'; distEl.className='gps-dist near';
+      $('#rc-gps-arrow').textContent='✓';
+      $('#rc-gps-bearing').textContent='位置已對齊施工前記錄點';
+      warnEl.style.display='none';
+    } else if(inRange){
+      distEl.textContent=fmtDist(dist); distEl.className='gps-dist near';
+      $('#rc-gps-arrow').textContent='〜';
+      $('#rc-gps-bearing').textContent=`朝${dir} · ${deg}°`;
+      warnEl.textContent=`距離小於定位誤差（±${Math.round(cAcc)}m），請改用殘影對齊`;
+      warnEl.style.display='block';
+    } else {
+      distEl.textContent=fmtDist(dist); distEl.className='gps-dist';
+      $('#rc-gps-arrow').textContent=arrow;
+      $('#rc-gps-bearing').textContent=`朝${dir} · ${deg}°`;
+      warnEl.textContent = cAcc>15 ? `精度 ±${Math.round(cAcc)}m，方向僅供參考` : '';
+      warnEl.style.display = cAcc>15 ? 'block' : 'none';
+    }
+    $('#rc-gps-nav-card').style.display='flex';
+  }
+
+  $('#rc-gps-btn').onclick = ()=>{
+    if(rcGpsWatchId!=null){ stopGpsWatch(); } else { startGpsWatch(); }
+  };
+
+  // GPS 座標折疊切換
+  $('#rc-gps-toggle').onclick = ()=>{
+    const coords=$('#rc-gps-coords');
+    const open = coords.style.display!=='none';
+    coords.style.display = open ? 'none' : 'block';
+    $('#rc-gps-toggle').textContent = open ? '▾ 顯示座標' : '▴ 隱藏座標';
+  };
+
+  // 方位角更新（回收時持續羅盤）
+  function updateRecAzimuth(cur){
+    $('#rc-az-cur').textContent = cur+'°';
+    $('#rc-az-cur-dir').textContent = azDir(cur);
+    if(recAzStored!=null){
+      const t=turnInfo(recAzStored, cur);
+      const el=$('#rc-az-turn');
+      el.textContent=t.text;
+      el.className='az-turn'+(t.ok?' ok':'');
+    }
+  }
+
+  // drag ghost
+  (function(){
+    let drag=false,lx=0,ly=0;
+    const wrap=$('.ghost-wrap');
+    wrap.style.pointerEvents='auto';
+    const down=(x,y)=>{drag=true;lx=x;ly=y;};
+    const move=(x,y)=>{ if(!drag)return; ghost.px+=x-lx; ghost.py+=y-ly; lx=x; ly=y; applyGhost(); };
+    const up=()=>{drag=false;};
+    wrap.addEventListener('pointerdown',e=>{down(e.clientX,e.clientY);wrap.setPointerCapture(e.pointerId);});
+    wrap.addEventListener('pointermove',e=>move(e.clientX,e.clientY));
+    wrap.addEventListener('pointerup',up);
+    wrap.addEventListener('pointercancel',up);
+  })();
+
+  /* ================= RECORDS ================= */
+  function renderRecords(){
+    const list=$('#rec-list');
+    if(!records.length){
+      list.innerHTML='<div class="empty"><div class="big">尚無紀錄</div>到「登錄」分頁拍攝施工前影像並標記人孔。</div>';
+      return;
+    }
+    list.innerHTML = records.map(r=>`
+      <div class="rec">
+        <img src="${r.before_photo}" alt="">
+        <div class="meta">
+          <div class="id">${r.id}</div>
+          <div class="sm">高 ${r.camera_height_m!=null?r.camera_height_m+'m':'—'} · 距目標 ${r.camera_dist_m!=null?r.camera_dist_m+'m':'—'} · 竿 ${r.pole_note||'—'}</div>
+          <div class="sm">${new Date(r.captured_at).toLocaleString()}</div>
+        </div>
+        <div class="acts">
+          <button class="go" data-go="${r.id}">回收</button>
+          <button data-del="${r.id}">刪除</button>
+        </div>
+      </div>`).join('');
+    list.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{
+      document.querySelector('nav button[data-view="recover"]').click();
+      recSel.value=b.dataset.go; loadRecord(b.dataset.go);
+    });
+    list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+      if(!confirm(`刪除 ${b.dataset.del}?`)) return;
+      records=records.filter(r=>r.id!==b.dataset.del); save(); renderRecords();
+    });
+  }
+
+  $('#rec-export').onclick = ()=>{
+    const blob=new Blob([JSON.stringify(records,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='manhole-records-v4.json'; a.click(); URL.revokeObjectURL(a.href);
+  };
+  $('#rec-import').onclick = ()=> $('#rec-importfile').click();
+  $('#rec-importfile').onchange = function(){
+    readFile(this).then(d=>{
+      try{
+        const data=JSON.parse(d.split(',').length>1?atob(d.split(',')[1]):d);
+        const arr=Array.isArray(data)?data:[];
+        let added=0;
+        arr.forEach(r=>{ if(r.id && r.before_photo && !records.some(x=>x.id===r.id)){records.push(r);added++;} });
+        save(); renderRecords();
+        alert(`匯入 ${added} 筆`);
+      }catch(e){ alert('JSON 解析失敗'); }
+    });
+    this.value='';
+  };
+
+  window.addEventListener('beforeunload', ()=>{ stopCamera(); stopGpsWatch(); stopCompass(); });
+})();
+</script>
+</body>
+</html>

@@ -41,7 +41,7 @@
   .stage video,.stage>img.base{display:block;width:100%;height:auto}
   .ghost-wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;touch-action:none}
   #rec-stage{touch-action:none}
-  .ghost-stage{position:relative;width:100%;transform-origin:center center;will-change:transform}
+  .ghost-stage{position:relative;transform-origin:center center;will-change:transform}
   .ghost-stage img{display:block;width:100%;height:auto}
   .photo-box{position:relative;display:inline-block;width:100%}
   .photo-box img{display:block;width:100%;height:auto;border-radius:10px}
@@ -338,6 +338,7 @@
 
   function setCapturePhoto(dataURL){
     cap.dataURL=dataURL; cap.target=null; cap.refs=[]; pending=null;
+    stopCamera(); capVideo.style.display='none';
     capStage.style.display='block'; capBox.style.display='inline-block';
     capImg.src=dataURL; capXhair.style.display='none';
     capBadge.textContent='點擊畫面 → 標出人孔中心';
@@ -447,7 +448,19 @@
   /* ================= RECOVER ================= */
   const recSel=$('#rec-select'), recPanel=$('#rec-panel'),
         recVideo=$('#rec-video'), recBaseImg=$('#rec-baseimg'),
-        recGhost=$('#rec-ghost'), recGhostImg=$('#rec-ghostimg'), recXhair=$('#rec-xhair');
+        recGhost=$('#rec-ghost'), recGhostImg=$('#rec-ghostimg'), recXhair=$('#rec-xhair'),
+        recStage=$('#rec-stage');
+
+  let ghostNatW=0, ghostNatH=0;
+  function fitGhost(){
+    if(!ghostNatW||!ghostNatH) return;
+    const sw=recStage.clientWidth, sh=recStage.clientHeight;
+    if(!sw||!sh) return;
+    const scale=Math.min(sw/ghostNatW, sh/ghostNatH);
+    recGhost.style.width=Math.round(ghostNatW*scale)+'px';
+  }
+  recGhostImg.onload=()=>{ ghostNatW=recGhostImg.naturalWidth; ghostNatH=recGhostImg.naturalHeight; fitGhost(); };
+  if(window.ResizeObserver) new ResizeObserver(fitGhost).observe(recStage);
 
   function refreshSelect(){
     const cur=recSel.value;
@@ -477,6 +490,7 @@
     recBaseImg.style.display='none'; recVideo.style.display='block';
     $('#rec-base-badge').textContent='現況 · 相機';
     await startCamera(recVideo);
+    requestAnimationFrame(fitGhost);
   }
   $('#rec-cam').onclick = startRecCamera;
   $('#rec-recenter').onclick = resetGhostTransform;
