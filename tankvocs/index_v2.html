@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>儲槽 VOCs 逸散量計算器 (表 AP-G 終極版)</title>
+    <!-- 引入 Tailwind CSS (CDN 方式，方便單檔部署) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 React 與 ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- 引入穩定版本的 Babel 用於在瀏覽器內即時編譯 JSX -->
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+    <style>
+        /* 自定義動畫，模擬 Tailwind 的 animate-fade-in-up */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up {
+            animation: fadeInUp 0.4s ease-out forwards;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- 加入 data-type="module" 並使用 Pragma 強制 Babel 使用傳統的 React.createElement -->
+    <script type="text/babel" data-type="module">
+        /** @jsx React.createElement */
+        /** @jsxFrag React.Fragment */
+
+        const { useState } = React;
+
+        function TankCalculator() {
+            // 1. 初始化表單狀態 (State)
+            const [inputs, setInputs] = useState({
+                D: 1.2,
+                H1: 1.75,
+                H2: 1.5,
+                Q: 60,
+                Mv: 190,
+                alpha: 0.89,
+                P: 0.000072,
+                delta_P: 0.00003,
+                T: 23.4,
+                delta_T: 5.7,
+                n: 91.25,
+                Kp: 1
+            });
+
+            const [results, setResults] = useState(null);
+            const [showFormulas, setShowFormulas] = useState(false);
+            const [copiedKey, setCopiedKey] = useState(null);
+
+            // 複製功能 (相容於 iFrame 與舊版瀏覽器)
+            const handleCopy = (text, key) => {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    setCopiedKey(key);
+                    setTimeout(() => setCopiedKey(null), 2000);
+                } catch (err) {
+                    console.error('複製失敗', err);
+                }
+                document.body.removeChild(textArea);
+            };
+
+            // 複製按鈕小組件
+            const CopyBtn = ({ text, id }) => {
+                const isCopied = copiedKey === id;
+                return (
+                    <button
+                        onClick={() => handleCopy(text, id)}
+                        className={`flex items-center space-x-1 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                            isCopied ? 'text-emerald-700 bg-emerald-100' : 'text-slate-500 hover:text-blue-600 hover:bg-blue-50'
+                        }`}
+                        title="複製計算過程"
+                    >
+                        {isCopied ? (
+                            <React.Fragment>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                <span>已複製</span>
+                            </React.Fragment>
+                        ) : (
+                            <React.Fragment>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                <span>複製</span>
+                            </React.Fragment>
+                        )}
+                    </button>
+                );
+            };
+
+            // 2. 處理輸入框數值變更
+            const handleChange = (e) => {
+                const { name, value } = e.target;
+                setInputs((prev) => ({
+                    ...prev,
+                    [name]: value === '' ? '' : Number(value)
+                }));
+            };
+
+            // 3. 核心計算邏輯
+            const calculateFullEmissions = () => {
+                const { D, H1, H2, Q, Mv, alpha, P, delta_P, T, delta_T, n, Kp } = inputs;
+
+                // 複合參數計算
+                const V = Math.PI * Math.pow(D / 2, 2) * H1;
+                const Hvo = H1 - H2 + 0.01 * D;
+
+                // 翻轉係數
+                const N = (4 * Q) / V;
+                let Kn = 1;
+                if (N > 36) {
+                    Kn = (180 + N) / (6 * N);
+                }
+
+                // 依據新圖表公式計算 Wv
+                const Wv = (Mv * P) / (10.731 * (1.8 * T + 19.16 * alpha + 491.44));
+
+                // 依據新圖表公式計算 Total 參數
+                const term1 = (1.296 * delta_T + 56 * alpha) / ((9 / 5) * T + 492);
+                const term2 = (delta_P - 0.06) / (14.7 - P);
+                
+                const Total1 = 0.454 * (n * Math.PI * 0.25 * Wv / Math.pow(0.3048, 3)) * (term1 + term2);
+                const Total2 = (0.454 * 0.001 * Mv * P * Kp * Kn) / 0.159;
+                const Total3 = 0.174 * P;
+
+                // 最終排放量
+                const standingLoss = (Total1 * Math.pow(D, 2) * Hvo) / (1 + Total3 * Hvo);
+                const workingLoss = Total2 * Q;
+                const Lt = standingLoss + workingLoss;
+                const annualTons = (Lt * 4) / 1000;
+
+                // 將結果更新到 State
+                setResults({ inputsSnap: { ...inputs }, V, Hvo, Wv, N, Kn, Total1, Total2, Total3, Lt, annualTons });
+            };
+
+            // 輔助函數：將物件 Key 轉換為易讀的標籤
+            const getLabel = (field) => {
+                const labels = {
+                    D: '儲槽直徑 D (m)',
+                    H1: '儲槽高度 H1 (m)',
+                    H2: '平均液面高度 H2 (m)',
+                    Q: '季儲存物料量 Q (m³/季)',
+                    Mv: '物料分子量 Mv',
+                    alpha: '顏色係數 α',
+                    P: '真實蒸氣壓 P (psia)',
+                    delta_P: '日蒸氣壓差 ΔP (psia)',
+                    T: '平均溫度 T (°C)',
+                    delta_T: '日溫差 ΔT (°C)',
+                    n: '季儲存天數 n (天)',
+                    Kp: '產品係數 Kp'
+                };
+                return labels[field] || field;
+            };
+
+            return (
+                <div className="min-h-screen bg-slate-100 py-8 px-4 font-sans text-slate-800">
+                    <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+                        
+                        {/* Header */}
+                        <div className="bg-slate-800 p-6 text-center">
+                            <h1 className="text-2xl md:text-3xl font-bold text-white tracking-wide">
+                                儲槽 VOCs 逸散量計算器
+                            </h1>
+                            <p className="text-slate-300 mt-2 text-sm md:text-base">
+                                (表 AP-G 終極版)
+                            </p>
+                        </div>
+
+                        <div className="p-6 md:p-8">
+                            
+                            {/* 區塊 1：儲槽尺寸與物料參數 */}
+                            <div className="mb-8">
+                                <h2 className="text-lg font-semibold border-l-4 border-blue-500 pl-3 mb-4 text-slate-700">
+                                    📦 儲槽尺寸與物料參數
+                                </h2>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
+                                    {['D', 'H1', 'H2', 'Q', 'Mv', 'alpha', 'Kp'].map((field) => (
+                                        <div key={field} className="flex flex-col">
+                                            <label className="text-sm font-medium text-slate-600 mb-1">
+                                                {getLabel(field)}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                name={field}
+                                                value={inputs[field]}
+                                                onChange={handleChange}
+                                                step="any"
+                                                className="px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* 區塊 2：壓力與溫度參數 */}
+                            <div className="mb-8">
+                                <h2 className="text-lg font-semibold border-l-4 border-blue-500 pl-3 mb-4 text-slate-700">
+                                    🌡️ 壓力與溫度參數
+                                </h2>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-5">
+                                    {['P', 'delta_P', 'T', 'delta_T', 'n'].map((field) => (
+                                        <div key={field} className="flex flex-col">
+                                            <label className="text-sm font-medium text-slate-600 mb-1">
+                                                {getLabel(field)}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                name={field}
+                                                value={inputs[field]}
+                                                onChange={handleChange}
+                                                step="any"
+                                                className="px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* 計算按鈕 */}
+                            <button
+                                onClick={calculateFullEmissions}
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-all duration-200 active:scale-[0.99]"
+                            >
+                                執行計算
+                            </button>
+
+                            {/* 運算結果展示區 */}
+                            {results && (
+                                <div className="mt-8 bg-emerald-50 border border-emerald-100 rounded-xl p-4 md:p-6 shadow-inner animate-fade-in-up">
+                                    <h3 className="text-xl font-bold text-emerald-800 mb-6 border-b border-emerald-200 pb-2">📋 詳細計算過程</h3>
+                                    
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                                        
+                                        {/* 左側結果 */}
+                                        <div className="space-y-4">
+                                            {/* V */}
+                                            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm overflow-x-auto relative">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <div className="text-sm font-bold text-slate-700">桶槽體積 V (m³)</div>
+                                                    <CopyBtn id="copy_V" text={`桶槽體積 V (m³)\nV = π × (D/2)² × H1\n  = π × (${results.inputsSnap.D}/2)² × ${results.inputsSnap.H1}\n  = ${results.V.toFixed(3)}`} />
+                                                </div>
+                                                <div className="font-mono text-xs md:text-sm text-slate-600 whitespace-nowrap">
+                                                    V = π × (D/2)² × H1 <br/>
+                                                    &nbsp;&nbsp;= π × ({results.inputsSnap.D}/2)² × {results.inputsSnap.H1} <br/>
+                                                    &nbsp;&nbsp;= <span className="font-bold text-slate-900 text-sm">{results.V.toFixed(3)}</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Hvo */}
+                                            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm overflow-x-auto relative">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <div className="text-sm font-bold text-slate-700">蒸氣空間 Hvo (m)</div>
+                                                    <CopyBtn id="copy_Hvo" text={`蒸氣空間 Hvo (m)\nHvo = H1 - H2 + 0.01 × D\n    = ${results.inputsSnap.H1} - ${results.inputsSnap.H2} + 0.01 × ${results.inputsSnap.D}\n    = ${results.Hvo.toFixed(3)}`} />
+                                                </div>
+                                                <div className="font-mono text-xs md:text-sm text-slate-600 whitespace-nowrap">
+                                                    Hvo = H1 - H2 + 0.01 × D <br/>
+                                                    &nbsp;&nbsp;&nbsp;&nbsp;= {results.inputsSnap.H1} - {results.inputsSnap.H2} + 0.01 × {results.inputsSnap.D} <br/>
+                                                    &nbsp;&nbsp;&nbsp;&nbsp;= <span className="font-bold text-slate-900 text-sm">{results.Hvo.toFixed(3)}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Wv */}
+                                            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm overflow-x-auto relative">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <div className="text-sm font-bold text-slate-700">蒸氣密度 Wv (lb/ft³)</div>
+                                                    <CopyBtn id="copy_Wv" text={`蒸氣密度 Wv (lb/ft³)\nWv = (Mv × P) / [10.731 × (1.8 × T + 19.16 × α + 491.44)]\n   = (${results.inputsSnap.Mv} × ${results.inputsSnap.P}) / [10.731 × (1.8 × ${results.inputsSnap.T} + 19.16 × ${results.inputsSnap.alpha} + 491.44)]\n   = ${results.Wv.toExponential(6)}`} />
+                                                </div>
+                                                <div className="font-mono text-xs md:text-sm text-slate-600 whitespace-nowrap">
+                                                    Wv = (Mv × P) / [10.731 × (1.8 × T + 19.16 × α + 491.44)] <br/>
+                                                    &nbsp;&nbsp;&nbsp;= ({results.inputsSnap.Mv} × {results.inputsSnap.P}) / [10.731 × (1.8 × {results.inputsSnap.T} + 19.16 × {results.inputsSnap.alpha} + 491.44)] <br/>
+                                                    &nbsp;&nbsp;&nbsp;= <span className="font-bold text-slate-900 text-sm">{results.Wv.toExponential(6)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* 右側結果 */}
+                                        <div className="space-y-4">
+                                            {/* N */}
+                                            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm overflow-x-auto relative">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <div className="text-sm font-bold text-slate-700">翻轉次數 N</div>
+                                                    <CopyBtn id="copy_N" text={`翻轉次數 N\nN = 4 × Q / V\n  = 4 × ${results.inputsSnap.Q} / ${results.V.toFixed(3)}\n  = ${results.N.toFixed(2)}`} />
+                                                </div>
+                                                <div className="font-mono text-xs md:text-sm text-slate-600 whitespace-nowrap">
+                                                    N = 4 × Q / V <br/>
+                                                    &nbsp;&nbsp;= 4 × {results.inputsSnap.Q} / {results.V.toFixed(3)} <br/>
+                                                    &nbsp;&nbsp;= <span className="font-bold text-slate-900 text-sm">{results.N.toFixed(2)}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Kn */}
+                                            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm overflow-x-auto relative">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <div className="text-sm font-bold text-slate-700">翻轉係數 Kn</div>
+                                                    {/* 修正：取消樣板字面值內的跳脫字元反引號，改為字串相加，以防止 Babel 編譯錯誤 */}
+                                                    <CopyBtn id="copy_Kn" text={`翻轉係數 Kn\nKn = N > 36 ? (180 + N) / (6N) : 1\n   = ${results.N > 36 ? '(180 + ' + results.N.toFixed(2) + ') / (6 × ' + results.N.toFixed(2) + ')' : '1 (因為 N ≤ 36)'}\n   = ${results.Kn.toFixed(6)}`} />
+                                                </div>
+                                                <div className="font-mono text-xs md:text-sm text-slate-600 whitespace-nowrap">
+                                                    Kn = N &gt; 36 ? (180 + N) / (6N) : 1 <br/>
+                                                    &nbsp;&nbsp;&nbsp;= {results.N > 36 ? '(180 + ' + results.N.toFixed(2) + ') / (6 × ' + results.N.toFixed(2) + ')' : '1 (因為 N ≤ 36)'} <br/>
+                                                    &nbsp;&nbsp;&nbsp;= <span className="font-bold text-slate-900 text-sm">{results.Kn.toFixed(6)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="col-span-1 lg:col-span-2 my-2 border-b border-emerald-200"></div>
+
+                                        {/* Total 參數 */}
+                                        <div className="col-span-1 lg:col-span-2 space-y-4">
+                                            {/* Total 1 */}
+                                            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm overflow-x-auto relative">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-bold text-slate-700">Total 1</span>
+                                                        <span className="font-mono text-xs text-slate-400 font-normal">約 {results.Total1.toFixed(6)}</span>
+                                                    </div>
+                                                    <CopyBtn id="copy_Total1" text={`Total 1\nTotal₁ = 0.454 × (n × π × 0.25 × Wv / 0.3048³) × [ (1.296ΔT + 56α)/((9/5)T + 492) + (ΔP - 0.06)/(14.7 - P) ]\n       = 0.454 × (${results.inputsSnap.n} × π × 0.25 × ${results.Wv.toExponential(4)} / 0.3048³) × [ (1.296×${results.inputsSnap.delta_T} + 56×${results.inputsSnap.alpha})/((9/5)×${results.inputsSnap.T} + 492) + (${results.inputsSnap.delta_P} - 0.06)/(14.7 - ${results.inputsSnap.P}) ]\n       = ${results.Total1.toExponential(8)} (約 ${results.Total1.toFixed(6)})`} />
+                                                </div>
+                                                <div className="font-mono text-xs md:text-sm text-slate-600 whitespace-nowrap">
+                                                    Total₁ = 0.454 × (n × π × 0.25 × Wv / 0.3048³) × [ (1.296ΔT + 56α)/((9/5)T + 492) + (ΔP - 0.06)/(14.7 - P) ] <br/>
+                                                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 0.454 × ({results.inputsSnap.n} × π × 0.25 × {results.Wv.toExponential(4)} / 0.3048³) × [ (1.296×{results.inputsSnap.delta_T} + 56×{results.inputsSnap.alpha})/((9/5)×{results.inputsSnap.T} + 492) + ({results.inputsSnap.delta_P} - 0.06)/(14.7 - {results.inputsSnap.P}) ] <br/>
+                                                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span className="font-bold text-emerald-700 text-sm">{results.Total1.toExponential(8)}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Total 2 */}
+                                            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm overflow-x-auto relative">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-bold text-slate-700">Total 2</span>
+                                                        <span className="font-mono text-xs text-slate-400 font-normal">約 {results.Total2.toFixed(6)}</span>
+                                                    </div>
+                                                    <CopyBtn id="copy_Total2" text={`Total 2\nTotal₂ = (0.454 × 0.001 × Mv × P × Kp × Kn) / 0.159\n       = (0.454 × 0.001 × ${results.inputsSnap.Mv} × ${results.inputsSnap.P} × ${results.inputsSnap.Kp} × ${results.Kn.toFixed(4)}) / 0.159\n       = ${results.Total2.toExponential(8)} (約 ${results.Total2.toFixed(6)})`} />
+                                                </div>
+                                                <div className="font-mono text-xs md:text-sm text-slate-600 whitespace-nowrap">
+                                                    Total₂ = (0.454 × 0.001 × Mv × P × Kp × Kn) / 0.159 <br/>
+                                                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= (0.454 × 0.001 × {results.inputsSnap.Mv} × {results.inputsSnap.P} × {results.inputsSnap.Kp} × {results.Kn.toFixed(4)}) / 0.159 <br/>
+                                                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span className="font-bold text-emerald-700 text-sm">{results.Total2.toExponential(8)}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Total 3 */}
+                                            <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm overflow-x-auto relative">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-bold text-slate-700">Total 3</span>
+                                                        <span className="font-mono text-xs text-slate-400 font-normal">約 {results.Total3.toFixed(6)}</span>
+                                                    </div>
+                                                    <CopyBtn id="copy_Total3" text={`Total 3\nTotal₃ = 0.174 × P\n       = 0.174 × ${results.inputsSnap.P}\n       = ${results.Total3.toExponential(8)} (約 ${results.Total3.toFixed(6)})`} />
+                                                </div>
+                                                <div className="font-mono text-xs md:text-sm text-slate-600 whitespace-nowrap">
+                                                    Total₃ = 0.174 × P <br/>
+                                                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= 0.174 × {results.inputsSnap.P} <br/>
+                                                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span className="font-bold text-emerald-700 text-sm">{results.Total3.toExponential(8)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 最終結果 */}
+                                        <div className="col-span-1 lg:col-span-2 mt-4 bg-emerald-600 rounded-lg p-5 text-center text-white shadow-md relative group">
+                                            <div className="absolute top-3 right-3 opacity-90 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => handleCopy(`總季逸散量 Lt (kg/季)\nLt = (Total₁ × D² × Hvo) / (1 + Total₃ × Hvo) + Total₂ × Q\n   = (${results.Total1.toExponential(4)} × ${results.inputsSnap.D}² × ${results.Hvo.toFixed(3)}) / (1 + ${results.Total3.toExponential(4)} × ${results.Hvo.toFixed(3)}) + ${results.Total2.toExponential(4)} × ${results.inputsSnap.Q}\n   = ${results.Lt.toFixed(6)}\n(年排放量估算： ${results.annualTons.toExponential(6)} t/年)`, 'copy_Lt')}
+                                                    className={`flex items-center space-x-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                                        copiedKey === 'copy_Lt' ? 'text-emerald-800 bg-white shadow-sm' : 'text-white hover:bg-emerald-700 border border-emerald-500 bg-emerald-700/50'
+                                                    }`}
+                                                    title="複製最終結果與過程"
+                                                >
+                                                    {copiedKey === 'copy_Lt' ? (
+                                                        <React.Fragment>
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                                            <span>已複製</span>
+                                                        </React.Fragment>
+                                                    ) : (
+                                                        <React.Fragment>
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                                            <span>複製完整過程</span>
+                                                        </React.Fragment>
+                                                    )}
+                                                </button>
+                                            </div>
+                                            
+                                            <h3 className="text-lg font-medium opacity-90 mb-2">總季逸散量 Lt</h3>
+                                            <div className="font-mono text-xs md:text-sm opacity-90 mb-4 bg-emerald-800/30 py-3 px-4 rounded-lg inline-block text-left overflow-x-auto max-w-full border border-emerald-500/50">
+                                                Lt = (Total₁ × D² × Hvo) / (1 + Total₃ × Hvo) + Total₂ × Q <br/>
+                                                &nbsp;&nbsp;= ({results.Total1.toExponential(4)} × {results.inputsSnap.D}² × {results.Hvo.toFixed(3)}) / (1 + {results.Total3.toExponential(4)} × {results.Hvo.toFixed(3)}) + {results.Total2.toExponential(4)} × {results.inputsSnap.Q}
+                                            </div>
+                                            <div className="text-4xl md:text-5xl font-bold font-mono tracking-wider">
+                                                {results.Lt.toFixed(6)} <span className="text-xl font-sans tracking-normal opacity-80">kg/季</span>
+                                            </div>
+                                            <p className="mt-3 text-sm opacity-80">
+                                                (年排放量估算： <span className="font-mono">{results.annualTons.toExponential(6)}</span> t/年)
+                                            </p>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 公式展示區 (Toggle) */}
+                            <div className="mt-8 border-t border-slate-200 pt-6">
+                                <button
+                                    onClick={() => setShowFormulas(!showFormulas)}
+                                    className="flex items-center justify-center w-full text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                                >
+                                    <svg className={`w-5 h-5 mr-2 transform transition-transform ${showFormulas ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                                    {showFormulas ? '隱藏計算公式' : '顯示 AP-42 展開公式參考'}
+                                </button>
+
+                                {showFormulas && (
+                                    <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4 md:p-6 overflow-x-auto animate-fade-in-up">
+                                        <div className="space-y-6 text-slate-700 text-sm md:text-base font-serif min-w-max">
+                                            
+                                            {/* Wv */}
+                                            <div className="flex items-center space-x-3">
+                                                <span className="italic font-bold text-lg">W<sub>v</sub></span>
+                                                <span>=</span>
+                                                <div className="flex flex-col items-center">
+                                                    <span className="border-b border-slate-400 px-3 py-1">M<sub>v</sub> × P</span>
+                                                    <span className="px-3 py-1">10.731 × (1.8 × T + 19.16 × α + 491.44)</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Total 1 */}
+                                            <div className="flex items-center space-x-3">
+                                                <span className="italic font-bold text-lg">Total<sub>1</sub></span>
+                                                <span>= 0.454 ×</span>
+                                                <div className="flex flex-col items-center">
+                                                    <span className="border-b border-slate-400 px-3 py-1">n × π × 0.25 × W<sub>v</sub></span>
+                                                    <span className="px-3 py-1">(0.3048)<sup>3</sup></span>
+                                                </div>
+                                                <span>×</span>
+                                                <span className="text-4xl font-thin leading-none pt-1">[</span>
+                                                <div className="flex flex-col items-center">
+                                                    <span className="border-b border-slate-400 px-3 py-1">1.296ΔT + 56α</span>
+                                                    <span className="px-3 py-1">(9/5)T + 492</span>
+                                                </div>
+                                                <span>+</span>
+                                                <div className="flex flex-col items-center">
+                                                    <span className="border-b border-slate-400 px-3 py-1">ΔP - 0.06</span>
+                                                    <span className="px-3 py-1">14.7 - P</span>
+                                                </div>
+                                                <span className="text-4xl font-thin leading-none pt-1">]</span>
+                                            </div>
+
+                                            {/* Total 2 */}
+                                            <div className="flex items-center space-x-3">
+                                                <span className="italic font-bold text-lg">Total<sub>2</sub></span>
+                                                <span>=</span>
+                                                <div className="flex flex-col items-center">
+                                                    <span className="border-b border-slate-400 px-3 py-1">0.454 × 0.001 × M<sub>v</sub> × P × Kp × Kn</span>
+                                                    <span className="px-3 py-1">0.159</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Total 3 */}
+                                            <div className="flex items-center space-x-3">
+                                                <span className="italic font-bold text-lg">Total<sub>3</sub></span>
+                                                <span>= 0.174 × P</span>
+                                            </div>
+
+                                            {/* Lt */}
+                                            <div className="flex items-center space-x-3 mt-8 p-4 bg-blue-100/50 rounded-lg border border-blue-200">
+                                                <span className="italic font-bold text-xl text-blue-900">L<sub>t</sub></span>
+                                                <span className="text-blue-900">=</span>
+                                                <div className="flex flex-col items-center text-blue-900">
+                                                    <span className="border-b border-blue-300 px-3 py-1">Total<sub>1</sub> × D<sup>2</sup> × H<sub>vo</sub></span>
+                                                    <span className="px-3 py-1">1 + Total<sub>3</sub> × H<sub>vo</sub></span>
+                                                </div>
+                                                <span className="text-blue-900">+ Total<sub>2</sub> × Q</span>
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 版權與免責聲明 */}
+                            <div className="mt-10 pt-6 border-t border-slate-200 text-center">
+                                <p className="text-slate-700 font-semibold text-sm">生產者：鍆資訊有限公司</p>
+                                <p className="text-slate-500 text-sm mt-1">版權所有 © 2026 鍆資訊有限公司。</p>
+                                <p className="text-slate-400 text-xs mt-3 max-w-xl mx-auto">
+                                    免責聲明：你能自由使用本網頁進行計算，但我方不對任何計算結果與後續應用負起責任。
+                                </p>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TankCalculator />);
+    </script>
+</body>
+</html>
