@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KMN 原生幣轉帳（管理）</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --ink:#e5e7eb; --mut:#8b93a1;
+          --pri:#3ddc97; --pri2:#0f6e56; --warn:#f5a623; --danger:#ef5350; --in:#5ac8fa;
+          --mono:ui-monospace,Menlo,Consolas,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Barlow Condensed",system-ui,"Noto Sans TC",sans-serif;
+         background:var(--bg); color:var(--ink); line-height:1.55; }
+  .wrap { max-width:600px; margin:0 auto; padding:26px 16px 60px; }
+  h1 { font-size:26px; margin:0 0 2px; letter-spacing:.5px; }
+  .sub { color:var(--mut); font-size:14px; margin-bottom:14px; }
+  .admin-tag { display:inline-block; background:rgba(245,166,35,.15); color:var(--warn);
+               font-size:12px; font-weight:700; padding:2px 10px; border-radius:5px; margin-bottom:14px; }
+  .flow { font-size:12px; color:var(--mut); background:#0c0e12; border:1px solid var(--line);
+          border-radius:8px; padding:10px 12px; margin-bottom:18px; font-family:var(--mono); }
+  .flow b { color:var(--in); }
+  .status-line { display:flex; gap:14px; font-size:13px; color:var(--mut); margin-bottom:16px; flex-wrap:wrap; }
+  .status-line b { color:var(--ink); font-family:var(--mono); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-right:4px; }
+  .dot.on { background:var(--pri); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--mut); margin:12px 0 5px; }
+  label:first-child { margin-top:0; }
+  input { width:100%; font-family:var(--mono); font-size:14px; padding:11px 13px;
+          background:#0c0e12; border:1px solid var(--line); border-radius:8px; color:var(--ink); }
+  input:focus { outline:none; border-color:var(--pri2); }
+  .pk-note { font-size:12px; color:var(--warn); margin-top:5px; }
+  .sender-info { font-size:13px; color:var(--mut); margin-top:8px; padding:8px 10px;
+                 background:#0c0e12; border-radius:6px; display:none; }
+  .sender-info.show { display:block; }
+  .sender-info .v { font-family:var(--mono); word-break:break-all; }
+  .sender-info .bal { color:var(--pri); }
+  .quick { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+  .quick button { flex:0; padding:5px 12px; font-size:13px; background:#22262f; color:var(--mut);
+                  border:1px solid var(--line); border-radius:6px; margin:0; width:auto; cursor:pointer; }
+  .quick button:hover { color:var(--ink); }
+  button.main { font:inherit; font-size:15px; font-weight:600; border:0; border-radius:8px; padding:12px 22px;
+           background:var(--pri); color:#06231a; cursor:pointer; letter-spacing:.5px; width:100%; margin-top:16px; }
+  button.main:disabled { opacity:.4; cursor:not-allowed; }
+  .result { margin-top:16px; padding:14px; border-radius:8px; display:none; font-size:14px; }
+  .result.show { display:block; }
+  .result.ok { background:rgba(61,220,151,.1); border:1px solid rgba(61,220,151,.3); }
+  .result.err { background:rgba(239,83,80,.1); border:1px solid rgba(239,83,80,.3); color:#fca5a5; }
+  .result.info { background:rgba(90,200,250,.08); border:1px solid rgba(90,200,250,.25); }
+  .result .v { font-family:var(--mono); word-break:break-all; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>原生幣轉帳</h1>
+  <span class="admin-tag">管理工具 · 需發送方私鑰</span>
+  <div class="sub">轉帳原生幣（KMN）。原生幣用於「啟用帳號」——帳號需先有原生幣才能送交易。</div>
+
+  <div class="flow">
+    分發鏈：營運帳號 ─轉─▶ <b>點數管理帳號</b> ─轉─▶ 存證使用者（啟用）
+  </div>
+
+  <div class="status-line">
+    <span><span class="dot" id="dot"></span><span id="conn">連線中…</span></span>
+    <span>高度 <b id="height">—</b></span>
+  </div>
+
+  <div class="card">
+    <label>發送方私鑰</label>
+    <input type="password" id="pk" placeholder="0x… 簽名用，僅在本機">
+    <div class="pk-note">私鑰只在瀏覽器內簽名，不會上傳</div>
+    <div class="sender-info" id="sender-info"></div>
+
+    <label>收款地址</label>
+    <input type="text" id="to" placeholder="0x…" spellcheck="false">
+
+    <label>轉帳數量 (KMN)</label>
+    <input type="text" id="amount" placeholder="例如 1" inputmode="decimal">
+    <div class="quick">
+      <button data-v="0.1">0.1</button>
+      <button data-v="1">1</button>
+      <button data-v="10">10</button>
+      <button data-v="100">100</button>
+      <button data-v="1000">1000</button>
+    </div>
+
+    <button class="main" id="btn" disabled>轉帳</button>
+    <div class="result" id="result"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var RPC = "https://chain.kmn.tw";
+  var $ = function (id) { return document.getElementById(id); };
+  var provider;
+
+  if (typeof ethers === "undefined") { $("conn").textContent = "ethers 載入失敗"; return; }
+  provider = new ethers.JsonRpcProvider(RPC);
+
+  function health() {
+    provider.getBlockNumber().then(function (n) {
+      $("dot").classList.add("on"); $("conn").textContent = "已連線"; $("height").textContent = "#" + n;
+    }).catch(function () { $("dot").classList.remove("on"); $("conn").textContent = "無法連線"; });
+  }
+  health(); setInterval(health, 8000);
+
+  // 快捷金額
+  Array.prototype.forEach.call(document.querySelectorAll(".quick button"), function (b) {
+    b.addEventListener("click", function () { $("amount").value = b.getAttribute("data-v"); });
+  });
+
+  // 輸入私鑰後顯示發送方地址與餘額
+  var checkTimer;
+  $("pk").addEventListener("input", function () {
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(showSender, 400);
+  });
+  async function showSender() {
+    var pk = $("pk").value.trim();
+    var info = $("sender-info");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) { info.className = "sender-info"; $("btn").disabled = true; return; }
+    try {
+      var w = new ethers.Wallet(pk);
+      var bal = await provider.getBalance(w.address);
+      info.className = "sender-info show";
+      info.innerHTML = "發送方 <span class='v'>" + w.address + "</span><br>餘額 <span class='bal'>" + ethers.formatEther(bal) + " KMN</span>";
+      $("btn").disabled = false;
+      if (bal === 0n) {
+        info.innerHTML += "<br><span style='color:var(--danger)'>⚠️ 此帳號沒有原生幣，無法送出交易</span>";
+        $("btn").disabled = true;
+      }
+    } catch (e) {
+      info.className = "sender-info show";
+      info.innerHTML = "<span style='color:var(--danger)'>私鑰無效</span>";
+      $("btn").disabled = true;
+    }
+  }
+
+  $("btn").addEventListener("click", async function () {
+    var box = $("result");
+    box.className = "result show info"; box.textContent = "處理中…";
+    try {
+      var pk = $("pk").value.trim();
+      var to = $("to").value.trim();
+      var amtStr = $("amount").value.trim();
+      if (!ethers.isAddress(to)) throw new Error("收款地址格式錯誤");
+      var amount;
+      try { amount = ethers.parseEther(amtStr); } catch { throw new Error("數量格式錯誤"); }
+      if (amount <= 0n) throw new Error("數量需大於 0");
+
+      var wallet = new ethers.Wallet(pk, provider);
+      var bal = await provider.getBalance(wallet.address);
+      if (bal < amount) throw new Error("餘額不足 (目前 " + ethers.formatEther(bal) + ")");
+
+      box.textContent = "送出交易中…";
+      var tx = await wallet.sendTransaction({ to: to, value: amount, gasPrice: 0, type: 0 });
+      var rc = await tx.wait();
+      var toBal = await provider.getBalance(to);
+      var fromBal = await provider.getBalance(wallet.address);
+
+      box.className = "result show ok";
+      box.innerHTML = "<b>✅ 轉帳成功</b> 區塊 #" + rc.blockNumber +
+        "<br>收款方餘額 " + ethers.formatEther(toBal) + " KMN" +
+        "<br>發送方餘額 " + ethers.formatEther(fromBal) + " KMN" +
+        "<br>交易 <span class='v'>" + tx.hash + "</span>";
+    } catch (e) {
+      box.className = "result show err";
+      box.textContent = "❌ " + (e.shortMessage || e.message);
+    }
+  });
+})();
+</script>
+</body>
+</html>

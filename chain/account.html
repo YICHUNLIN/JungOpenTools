@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KMN 存證帳戶查詢</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --ink:#e5e7eb; --mut:#8b93a1;
+          --pri:#3ddc97; --pri2:#0f6e56; --warn:#f5a623; --danger:#ef5350; --in:#5ac8fa;
+          --mono:ui-monospace,Menlo,Consolas,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Barlow Condensed",system-ui,"Noto Sans TC",sans-serif;
+         background:var(--bg); color:var(--ink); line-height:1.55; }
+  .wrap { max-width:820px; margin:0 auto; padding:26px 16px 60px; }
+  h1 { font-size:26px; margin:0 0 2px; letter-spacing:.5px; }
+  .sub { color:var(--mut); font-size:14px; margin-bottom:20px; }
+  .status-line { display:flex; gap:14px; font-size:13px; color:var(--mut); margin-bottom:16px; flex-wrap:wrap; }
+  .status-line b { color:var(--ink); font-family:var(--mono); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-right:4px; }
+  .dot.on { background:var(--pri); }
+  .row { display:flex; gap:8px; margin-bottom:16px; }
+  input { flex:1; font-family:var(--mono); font-size:15px; padding:12px 14px;
+          background:#0c0e12; border:1px solid var(--line); border-radius:8px; color:var(--ink); }
+  input:focus { outline:none; border-color:var(--pri2); }
+  button { font:inherit; font-size:15px; font-weight:600; border:0; border-radius:8px; padding:12px 22px;
+           background:var(--pri); color:#06231a; cursor:pointer; letter-spacing:.5px; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .cards { display:flex; gap:14px; margin-bottom:20px; flex-wrap:wrap; }
+  .stat { flex:1; min-width:160px; background:var(--card); border:1px solid var(--line);
+          border-radius:12px; padding:18px 20px; }
+  .stat .label { color:var(--mut); font-size:13px; margin-bottom:6px; }
+  .stat .num { font-size:36px; font-family:var(--mono); color:var(--pri); line-height:1; }
+  .stat .unit { font-size:14px; color:var(--mut); margin-left:6px; }
+  .stat.proofs .num { color:var(--in); }
+  table { width:100%; border-collapse:collapse; font-size:13px; display:none; }
+  table.show { display:table; }
+  th { text-align:left; color:var(--mut); font-weight:600; padding:9px 10px; border-bottom:1px solid var(--line);
+       font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+  td { padding:10px; border-bottom:1px solid var(--line); font-family:var(--mono); vertical-align:top; }
+  tr:hover td { background:rgba(255,255,255,.02); }
+  .badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px; }
+  .badge.ok { background:rgba(61,220,151,.15); color:var(--pri); }
+  .badge.rv { background:rgba(245,166,35,.15); color:var(--warn); }
+  .fn { font-family:system-ui,sans-serif; }
+  .hashcell a { color:var(--mut); text-decoration:none; }
+  .hashcell a:hover { color:var(--pri); }
+  .msg { color:var(--mut); text-align:center; padding:28px; display:none; }
+  .msg.show { display:block; }
+  .err { color:var(--danger); }
+  .section-title { font-size:15px; color:var(--mut); text-transform:uppercase; letter-spacing:.5px;
+                   margin:24px 0 10px; font-weight:600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>存證帳戶查詢</h1>
+  <div class="sub">輸入帳號地址，查詢點數餘額與存證紀錄 · 唯讀、不需私鑰 · Chain ID 88860</div>
+
+  <div class="status-line">
+    <span><span class="dot" id="dot"></span><span id="conn">連線中…</span></span>
+    <span>高度 <b id="height">—</b></span>
+  </div>
+
+  <div class="row">
+    <input id="addr" placeholder="0x 帳號地址…" spellcheck="false" autocomplete="off">
+    <button id="btn">查詢</button>
+  </div>
+
+  <div class="cards" id="cards" style="display:none;">
+    <div class="stat points">
+      <div class="label">可用點數</div>
+      <div><span class="num" id="s-points">—</span><span class="unit">點</span></div>
+    </div>
+    <div class="stat proofs">
+      <div class="label">存證紀錄</div>
+      <div><span class="num" id="s-proofs">—</span><span class="unit">筆</span></div>
+    </div>
+  </div>
+
+  <div class="section-title" id="list-title" style="display:none;">存證紀錄（新到舊）</div>
+  <div class="msg" id="msg"></div>
+
+  <table id="tbl">
+    <thead><tr>
+      <th>檔名</th><th>備註</th><th>區塊</th><th>時間</th><th>狀態</th><th>雜湊</th>
+    </tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<script>
+(function () {
+  // ====== 設定：填入你的合約地址 (deployed.json 的 contracts) ======
+  var RPC = "https://chain.kmn.tw";
+  var CONTRACTS = {
+    ProofRegistry: "0x96f925fCB2C3D3Be6B3b5e6577E8030b34aC03f2",
+    ProofVerifier: "0xD3c0C957867fdBb43E8907Bbf55C024B7a22E5eA",
+    NotaryPoint:   "0x51fBA29ABFC827cb04e4a128aCb3d186c31Bef79"
+  };
+  // ================================================================
+
+  var ABI = {
+    reg: ["function countBySubmitter(address) view returns (uint256)",
+          "function hashOfSubmitterAt(address, uint256) view returns (bytes32)"],
+    ver: ["function verify(bytes32) view returns (tuple(uint8 status, address submitter, uint64 timestamp, uint64 blockNumber, string category, string meta))"],
+    pt:  ["function balanceOf(address) view returns (uint256)"]
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var provider;
+
+  if (typeof ethers === "undefined") { $("conn").textContent = "ethers 載入失敗"; return; }
+  provider = new ethers.JsonRpcProvider(RPC);
+
+  function health() {
+    provider.getBlockNumber().then(function (n) {
+      $("dot").classList.add("on"); $("conn").textContent = "已連線"; $("height").textContent = "#" + n;
+    }).catch(function () { $("dot").classList.remove("on"); $("conn").textContent = "無法連線"; });
+  }
+  health(); setInterval(health, 8000);
+
+  function short(h) { return h.slice(0, 12) + "…" + h.slice(-6); }
+  function safeMeta(s) { try { return JSON.parse(s); } catch { return {}; } }
+
+  async function query() {
+    var addr = $("addr").value.trim();
+    $("msg").className = "msg"; $("tbl").className = ""; $("cards").style.display = "none";
+    $("list-title").style.display = "none";
+    if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+      $("msg").className = "msg show err"; $("msg").textContent = "地址格式不正確 (需 0x + 40 位)"; return;
+    }
+    $("btn").disabled = true;
+    $("msg").className = "msg show"; $("msg").textContent = "查詢中…";
+    try {
+      var reg = new ethers.Contract(CONTRACTS.ProofRegistry, ABI.reg, provider);
+      var ver = new ethers.Contract(CONTRACTS.ProofVerifier, ABI.ver, provider);
+      var pt = new ethers.Contract(CONTRACTS.NotaryPoint, ABI.pt, provider);
+
+      var bal = await pt.balanceOf(addr);
+      var count = Number(await reg.countBySubmitter(addr));
+
+      $("s-points").textContent = bal.toString();
+      $("s-proofs").textContent = count;
+      $("cards").style.display = "flex";
+
+      if (count === 0) {
+        $("msg").className = "msg show"; $("msg").textContent = "此帳號目前沒有存證紀錄";
+        return;
+      }
+      $("msg").className = "msg"; $("list-title").style.display = "block";
+
+      // 逐筆取雜湊 → verify 拿明細 (新到舊)
+      var tb = $("tbody"); tb.innerHTML = "";
+      // 先取所有 hash (反序)
+      var idxs = [];
+      for (var i = count - 1; i >= 0; i--) idxs.push(i);
+      for (var j = 0; j < idxs.length; j++) {
+        var h = await reg.hashOfSubmitterAt(addr, idxs[j]);
+        var r = await ver.verify(h);
+        var m = safeMeta(r.meta);
+        var st = Number(r.status);
+        var badge = st === 1 ? '<span class="badge ok">有效</span>'
+                  : st === 2 ? '<span class="badge rv">已撤銷</span>' : "—";
+        var time = new Date(Number(r.timestamp) * 1000).toLocaleString("zh-TW", { hour12: false });
+        var tr = document.createElement("tr");
+        tr.innerHTML =
+          '<td class="fn">' + (m.fn ? m.fn : "—") + '</td>' +
+          '<td class="fn">' + (m.note ? m.note : "") + '</td>' +
+          '<td>#' + r.blockNumber + '</td>' +
+          '<td style="font-size:12px">' + time + '</td>' +
+          '<td>' + badge + '</td>' +
+          '<td class="hashcell"><a href="#" title="' + h + '" onclick="navigator.clipboard.writeText(\'' + h + '\');this.textContent=\'已複製\';return false;">' + short(h) + '</a></td>';
+        tb.appendChild(tr);
+      }
+      $("tbl").className = "show";
+    } catch (e) {
+      $("msg").className = "msg show err"; $("msg").textContent = "查詢失敗：" + (e.shortMessage || e.message);
+    } finally {
+      $("btn").disabled = false;
+    }
+  }
+
+  $("btn").addEventListener("click", query);
+  $("addr").addEventListener("keydown", function (e) { if (e.key === "Enter") query(); });
+})();
+</script>
+</body>
+</html>

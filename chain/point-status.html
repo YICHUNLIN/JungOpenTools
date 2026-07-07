@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KMN 點數統計（管理）</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --ink:#e5e7eb; --mut:#8b93a1;
+          --pri:#3ddc97; --pri2:#0f6e56; --warn:#f5a623; --danger:#ef5350; --in:#5ac8fa; --out:#ff9f68;
+          --mono:ui-monospace,Menlo,Consolas,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Barlow Condensed",system-ui,"Noto Sans TC",sans-serif;
+         background:var(--bg); color:var(--ink); line-height:1.55; }
+  .wrap { max-width:880px; margin:0 auto; padding:26px 16px 60px; }
+  h1 { font-size:26px; margin:0 0 2px; letter-spacing:.5px; }
+  .admin-tag { display:inline-block; background:rgba(245,166,35,.15); color:var(--warn);
+               font-size:12px; font-weight:700; padding:2px 10px; border-radius:5px; margin-bottom:14px; }
+  .sub { color:var(--mut); font-size:14px; margin-bottom:16px; }
+  .status-line { display:flex; gap:14px; font-size:13px; color:var(--mut); margin-bottom:16px; flex-wrap:wrap; }
+  .status-line b { color:var(--ink); font-family:var(--mono); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-right:4px; }
+  .dot.on { background:var(--pri); }
+  button.load { font:inherit; font-size:15px; font-weight:600; border:0; border-radius:8px; padding:12px 22px;
+           background:var(--pri); color:#06231a; cursor:pointer; letter-spacing:.5px; margin-bottom:16px; }
+  button.load:disabled { opacity:.4; cursor:not-allowed; }
+  .prog { font-size:12px; color:var(--mut); margin-bottom:14px; display:none; }
+  .prog.show { display:block; }
+  .cards { display:flex; gap:14px; margin-bottom:22px; flex-wrap:wrap; }
+  .stat { flex:1; min-width:150px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  .stat .label { color:var(--mut); font-size:13px; margin-bottom:5px; }
+  .stat .num { font-size:30px; font-family:var(--mono); line-height:1; }
+  .stat.minted .num { color:var(--pri); } .stat.burned .num { color:var(--out); }
+  .stat.circ .num { color:var(--in); } .stat.users .num { color:var(--ink); }
+  .section-title { font-size:15px; color:var(--mut); text-transform:uppercase; letter-spacing:.5px;
+                   margin:20px 0 10px; font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-size:13px; display:none; }
+  table.show { display:table; }
+  th { text-align:left; color:var(--mut); font-weight:600; padding:9px 10px; border-bottom:1px solid var(--line);
+       font-size:12px; text-transform:uppercase; letter-spacing:.5px; cursor:pointer; user-select:none; }
+  th.sorted { color:var(--pri); }
+  td { padding:10px; border-bottom:1px solid var(--line); font-family:var(--mono); vertical-align:top; }
+  tr:hover td { background:rgba(255,255,255,.02); }
+  td.num { text-align:right; }
+  td.used { color:var(--out); font-weight:600; }
+  td.got { color:var(--pri); }
+  td.bal { color:var(--in); }
+  .rank { color:var(--mut); }
+  .msg { color:var(--mut); text-align:center; padding:26px; display:none; }
+  .msg.show { display:block; }
+  .err { color:var(--danger); }
+  .addr-cell a { color:var(--ink); text-decoration:none; }
+  .addr-cell a:hover { color:var(--pri); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>點數統計</h1>
+  <span class="admin-tag">管理工具</span>
+  <div class="sub">全鏈彙總：發放總量、消耗總量，以及各帳號取得／消耗明細</div>
+
+  <div class="status-line">
+    <span><span class="dot" id="dot"></span><span id="conn">連線中…</span></span>
+    <span>高度 <b id="height">—</b></span>
+  </div>
+
+  <button class="load" id="btn">載入統計</button>
+  <div class="prog" id="prog"></div>
+
+  <div class="cards" id="cards" style="display:none;">
+    <div class="stat minted"><div class="label">發放總點數</div><div><span class="num" id="s-minted">—</span></div></div>
+    <div class="stat burned"><div class="label">消耗總點數</div><div><span class="num" id="s-burned">—</span></div></div>
+    <div class="stat circ"><div class="label">流通中 (未使用)</div><div><span class="num" id="s-circ">—</span></div></div>
+    <div class="stat users"><div class="label">持有帳號數</div><div><span class="num" id="s-users">—</span></div></div>
+  </div>
+
+  <div class="section-title" id="list-title" style="display:none;">帳號明細（點欄位可排序）</div>
+  <div class="msg" id="msg"></div>
+
+  <table id="tbl">
+    <thead><tr>
+      <th data-sort="rank">#</th>
+      <th data-sort="addr">帳號</th>
+      <th data-sort="got" class="num">取得</th>
+      <th data-sort="used" class="num sorted">消耗 ▼</th>
+      <th data-sort="bal" class="num">餘額</th>
+    </tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<script>
+(function () {
+  // ====== 設定：填入 NotaryPoint 合約地址 ======
+  var RPC = "https://chain.kmn.tw";
+  var NOTARY_POINT = "0x51fBA29ABFC827cb04e4a128aCb3d186c31Bef79";
+  var START_BLOCK = 0;   // 填合約部署區塊號可加速
+  var CHUNK = 5000;
+  // ============================================
+
+  var ABI = ["event Transfer(address indexed from, address indexed to, uint256 value)"];
+  var ZERO = "0x0000000000000000000000000000000000000000";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var provider, rows = [], sortKey = "used", sortDesc = true;
+
+  if (typeof ethers === "undefined") { $("conn").textContent = "ethers 載入失敗"; return; }
+  provider = new ethers.JsonRpcProvider(RPC);
+
+  function health() {
+    provider.getBlockNumber().then(function (n) {
+      $("dot").classList.add("on"); $("conn").textContent = "已連線"; $("height").textContent = "#" + n;
+    }).catch(function () { $("dot").classList.remove("on"); $("conn").textContent = "無法連線"; });
+  }
+  health(); setInterval(health, 8000);
+
+  function short(a) { return a.slice(0, 10) + "…" + a.slice(-6); }
+
+  async function queryChunked(contract, filter, from, to, onProgress) {
+    var all = [];
+    for (var s = from; s <= to; s += CHUNK) {
+      var e = Math.min(s + CHUNK - 1, to);
+      all = all.concat(await contract.queryFilter(filter, s, e));
+      if (onProgress) onProgress(e, to);
+    }
+    return all;
+  }
+
+  function renderTable() {
+    var tb = $("tbody"); tb.innerHTML = "";
+    var sorted = rows.slice().sort(function (a, b) {
+      var av, bv;
+      if (sortKey === "addr") { av = a.addr; bv = b.addr; return sortDesc ? (bv < av ? -1 : 1) : (av < bv ? -1 : 1); }
+      av = a[sortKey]; bv = b[sortKey];
+      return sortDesc ? Number(bv - av) : Number(av - bv);
+    });
+    sorted.forEach(function (r, i) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        '<td class="rank">' + (i + 1) + '</td>' +
+        '<td class="addr-cell"><a href="#" title="' + r.addr + '" onclick="navigator.clipboard.writeText(\'' + r.addr + '\');this.textContent=\'已複製\';return false;">' + short(r.addr) + '</a></td>' +
+        '<td class="num got">' + r.got.toString() + '</td>' +
+        '<td class="num used">' + r.used.toString() + '</td>' +
+        '<td class="num bal">' + (r.got - r.used).toString() + '</td>';
+      tb.appendChild(tr);
+    });
+    // 更新表頭排序標記
+    Array.prototype.forEach.call(document.querySelectorAll("th"), function (th) {
+      var key = th.getAttribute("data-sort");
+      th.classList.toggle("sorted", key === sortKey);
+      var base = th.textContent.replace(/[ ▼▲]+$/, "");
+      th.textContent = key === sortKey ? base + " " + (sortDesc ? "▼" : "▲") : base;
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll("th"), function (th) {
+    th.addEventListener("click", function () {
+      var key = th.getAttribute("data-sort");
+      if (key === sortKey) sortDesc = !sortDesc; else { sortKey = key; sortDesc = true; }
+      renderTable();
+    });
+  });
+
+  $("btn").addEventListener("click", async function () {
+    $("btn").disabled = true;
+    $("msg").className = "msg"; $("tbl").className = ""; $("cards").style.display = "none"; $("list-title").style.display = "none";
+    $("prog").className = "prog show"; $("prog").textContent = "掃描鏈上點數事件中…";
+    try {
+      var pt = new ethers.Contract(NOTARY_POINT, ABI, provider);
+      var head = await provider.getBlockNumber();
+      var logs = await queryChunked(pt, pt.filters.Transfer(), START_BLOCK, head, function (cur, total) {
+        $("prog").textContent = "掃描中… 區塊 " + cur + " / " + total;
+      });
+      $("prog").className = "prog";
+
+      var totalMinted = 0n, totalBurned = 0n;
+      var per = {};
+      function ens(a) { if (!per[a]) per[a] = { addr: a, got: 0n, used: 0n }; return per[a]; }
+      logs.forEach(function (l) {
+        var from = l.args.from, to = l.args.to, v = l.args.value;
+        if (from === ZERO) { totalMinted += v; ens(to).got += v; }
+        else if (to === ZERO) { totalBurned += v; ens(from).used += v; }
+        else { ens(to).got += v; ens(from).used += v; } // 一般轉讓 (若開放)
+      });
+
+      rows = Object.values(per);
+      var holders = rows.filter(function (r) { return (r.got - r.used) > 0n; }).length;
+
+      $("s-minted").textContent = totalMinted.toString();
+      $("s-burned").textContent = totalBurned.toString();
+      $("s-circ").textContent = (totalMinted - totalBurned).toString();
+      $("s-users").textContent = holders;
+      $("cards").style.display = "flex";
+
+      if (rows.length === 0) {
+        $("msg").className = "msg show"; $("msg").textContent = "目前沒有任何點數紀錄";
+      } else {
+        $("list-title").style.display = "block";
+        sortKey = "used"; sortDesc = true;
+        renderTable();
+        $("tbl").className = "show";
+      }
+    } catch (e) {
+      $("prog").className = "prog";
+      $("msg").className = "msg show err"; $("msg").textContent = "載入失敗：" + (e.shortMessage || e.message);
+    } finally {
+      $("btn").disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

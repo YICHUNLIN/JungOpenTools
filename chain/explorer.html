@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KMN 鏈查詢</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --ink:#e5e7eb; --mut:#8b93a1;
+          --pri:#3ddc97; --pri2:#0f6e56; --warn:#f5a623; --danger:#ef5350; --mono:ui-monospace,Menlo,Consolas,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Barlow Condensed",system-ui,-apple-system,"Noto Sans TC",sans-serif;
+         background:var(--bg); color:var(--ink); line-height:1.6; }
+  .wrap { max-width:680px; margin:0 auto; padding:28px 18px 60px; }
+  h1 { font-size:26px; margin:0 0 2px; letter-spacing:.5px; }
+  .sub { color:var(--mut); font-size:14px; margin-bottom:22px; }
+  .status { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; color:var(--mut);
+            background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:20px; }
+  .status b { color:var(--ink); font-family:var(--mono); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-right:5px; vertical-align:middle; }
+  .dot.on { background:var(--pri); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  .card h2 { font-size:15px; margin:0 0 12px; color:var(--mut); font-weight:600; letter-spacing:.5px; text-transform:uppercase; }
+  .row { display:flex; gap:8px; }
+  input { flex:1; font:inherit; font-family:var(--mono); font-size:14px; padding:11px 13px;
+          background:#0c0e12; border:1px solid var(--line); border-radius:8px; color:var(--ink); }
+  input:focus { outline:none; border-color:var(--pri2); }
+  button { font:inherit; font-size:15px; font-weight:600; border:0; border-radius:8px; padding:11px 20px;
+           background:var(--pri); color:#06231a; cursor:pointer; letter-spacing:.5px; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .result { margin-top:14px; display:none; }
+  .result.show { display:block; }
+  .big { font-size:34px; font-family:var(--mono); color:var(--pri); word-break:break-all; line-height:1.2; }
+  .unit { font-size:15px; color:var(--mut); margin-left:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
+  td { padding:6px 10px 6px 0; vertical-align:top; border-top:1px solid var(--line); }
+  td:first-child { color:var(--mut); white-space:nowrap; width:110px; }
+  td.v { font-family:var(--mono); word-break:break-all; }
+  .err { color:var(--danger); font-size:13px; margin-top:10px; }
+  .badge { display:inline-block; font-size:12px; font-family:var(--mono); padding:2px 8px; border-radius:5px; }
+  .badge.ok { background:rgba(61,220,151,.15); color:var(--pri); }
+  .badge.no { background:rgba(239,83,80,.15); color:var(--danger); }
+  .badge.wait { background:rgba(245,166,35,.15); color:var(--warn); }
+  .hint { color:var(--mut); font-size:12px; margin-top:6px; }
+  a { color:var(--pri); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>KMN 鏈查詢</h1>
+  <div class="sub">唯讀查詢工具 · 不需要私鑰 · Chain ID 88860</div>
+
+  <div class="status">
+    <span><span class="dot" id="dot"></span><span id="conn">連線中…</span></span>
+    <span>高度 <b id="height">—</b></span>
+    <span>出塊 <b id="blocktime">—</b></span>
+  </div>
+
+  <!-- 查餘額 -->
+  <div class="card">
+    <h2>查詢地址</h2>
+    <div class="row">
+      <input id="addr" placeholder="0x 錢包地址…" spellcheck="false" autocomplete="off">
+      <button id="btn-addr">查詢</button>
+    </div>
+    <div class="hint">輸入任意錢包或合約地址，查餘額、交易數與帳號類型</div>
+    <div class="result" id="addr-result">
+      <div><span class="big" id="bal">—</span><span class="unit">KMN</span></div>
+      <table>
+        <tr><td>地址</td><td class="v" id="r-addr"></td></tr>
+        <tr><td>交易數 (nonce)</td><td class="v" id="r-nonce"></td></tr>
+        <tr><td>帳號類型</td><td class="v" id="r-type"></td></tr>
+      </table>
+      <div class="err" id="addr-err"></div>
+    </div>
+  </div>
+
+  <!-- 查交易 -->
+  <div class="card">
+    <h2>查詢交易</h2>
+    <div class="row">
+      <input id="txh" placeholder="0x 交易 hash…" spellcheck="false" autocomplete="off">
+      <button id="btn-tx">查詢</button>
+    </div>
+    <div class="hint">貼上交易 hash，查狀態、區塊、金額與收發雙方</div>
+    <div class="result" id="tx-result">
+      <table>
+        <tr><td>狀態</td><td class="v" id="t-status"></td></tr>
+        <tr><td>區塊</td><td class="v" id="t-block"></td></tr>
+        <tr><td>時間</td><td class="v" id="t-time"></td></tr>
+        <tr><td>從</td><td class="v" id="t-from"></td></tr>
+        <tr><td>到</td><td class="v" id="t-to"></td></tr>
+        <tr><td>金額</td><td class="v" id="t-value"></td></tr>
+        <tr><td>Gas 用量</td><td class="v" id="t-gas"></td></tr>
+      </table>
+      <div class="err" id="tx-err"></div>
+    </div>
+  </div>
+
+  <div class="sub" style="text-align:center; margin-top:24px;">
+    透過 <span style="font-family:var(--mono)">https://chain.kmn.tw</span> 查詢
+  </div>
+</div>
+
+<script>
+(function () {
+  var RPC = "https://chain.kmn.tw";
+  var $ = function (id) { return document.getElementById(id); };
+  var provider = null, connected = false;
+
+  if (typeof ethers === "undefined") {
+    $("conn").textContent = "ethers 載入失敗，請重新整理";
+    return;
+  }
+  provider = new ethers.JsonRpcProvider(RPC);
+
+  // 連線狀態 + 高度輪詢
+  function refresh() {
+    provider.getBlockNumber().then(function (n) {
+      connected = true;
+      $("dot").classList.add("on");
+      $("conn").textContent = "已連線";
+      $("height").textContent = "#" + n;
+    }).catch(function () {
+      connected = false;
+      $("dot").classList.remove("on");
+      $("conn").textContent = "無法連線";
+    });
+  }
+  // 量測出塊間隔 (最近兩塊時間差)
+  provider.getBlock("latest").then(function (b) {
+    if (b) provider.getBlock(b.number - 1).then(function (prev) {
+      if (prev) $("blocktime").textContent = (b.timestamp - prev.timestamp) + "s";
+    });
+  }).catch(function(){});
+  refresh();
+  setInterval(refresh, 5000);
+
+  function fmtTime(ts) {
+    var d = new Date(ts * 1000);
+    return d.toLocaleString("zh-TW", { hour12: false });
+  }
+
+  // ---- 查地址 ----
+  function queryAddr() {
+    var a = $("addr").value.trim();
+    $("addr-err").textContent = "";
+    if (!ethers.isAddress(a)) { $("addr-err").textContent = "地址格式不正確"; return; }
+    $("btn-addr").disabled = true;
+    $("addr-result").classList.add("show");
+    $("bal").textContent = "…";
+    Promise.all([
+      provider.getBalance(a),
+      provider.getTransactionCount(a),
+      provider.getCode(a)
+    ]).then(function (r) {
+      $("bal").textContent = Number(ethers.formatEther(r[0])).toLocaleString("en-US", { maximumFractionDigits: 6 });
+      $("r-addr").textContent = a;
+      $("r-nonce").textContent = r[1];
+      $("r-type").textContent = (r[2] && r[2] !== "0x") ? "合約 (Contract)" : "一般帳號 (EOA)";
+    }).catch(function (e) {
+      $("addr-err").textContent = "查詢失敗：" + (e.shortMessage || e.message);
+    }).finally(function () { $("btn-addr").disabled = false; });
+  }
+
+  // ---- 查交易 ----
+  function queryTx() {
+    var h = $("txh").value.trim();
+    $("tx-err").textContent = "";
+    if (!/^0x[0-9a-fA-F]{64}$/.test(h)) { $("tx-err").textContent = "交易 hash 格式不正確 (需 0x + 64 位)"; return; }
+    $("btn-tx").disabled = true;
+    $("tx-result").classList.add("show");
+    for (var id of ["t-status","t-block","t-time","t-from","t-to","t-value","t-gas"]) $(id).textContent = "…";
+    Promise.all([provider.getTransaction(h), provider.getTransactionReceipt(h)])
+      .then(function (r) {
+        var tx = r[0], rc = r[1];
+        if (!tx) { $("tx-err").textContent = "查無此交易"; $("tx-result").classList.remove("show"); return; }
+        if (rc) {
+          $("t-status").innerHTML = rc.status === 1
+            ? '<span class="badge ok">成功</span>' : '<span class="badge no">失敗</span>';
+          $("t-block").textContent = "#" + rc.blockNumber;
+          $("t-gas").textContent = rc.gasUsed.toString();
+          provider.getBlock(rc.blockNumber).then(function (b) {
+            if (b) $("t-time").textContent = fmtTime(b.timestamp);
+          });
+        } else {
+          $("t-status").innerHTML = '<span class="badge wait">待確認 (pending)</span>';
+          $("t-block").textContent = "—"; $("t-time").textContent = "—"; $("t-gas").textContent = "—";
+        }
+        $("t-from").textContent = tx.from;
+        $("t-to").textContent = tx.to || "(合約部署)";
+        $("t-value").textContent = Number(ethers.formatEther(tx.value)).toLocaleString("en-US", { maximumFractionDigits: 6 }) + " KMN";
+      })
+      .catch(function (e) { $("tx-err").textContent = "查詢失敗：" + (e.shortMessage || e.message); })
+      .finally(function () { $("btn-tx").disabled = false; });
+  }
+
+  $("btn-addr").addEventListener("click", queryAddr);
+  $("btn-tx").addEventListener("click", queryTx);
+  $("addr").addEventListener("keydown", function (e) { if (e.key === "Enter") queryAddr(); });
+  $("txh").addEventListener("keydown", function (e) { if (e.key === "Enter") queryTx(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KMN 鏈上存證</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --ink:#e5e7eb; --mut:#8b93a1;
+          --pri:#3ddc97; --pri2:#0f6e56; --warn:#f5a623; --danger:#ef5350; --in:#5ac8fa;
+          --mono:ui-monospace,Menlo,Consolas,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Barlow Condensed",system-ui,"Noto Sans TC",sans-serif;
+         background:var(--bg); color:var(--ink); line-height:1.55; }
+  .wrap { max-width:640px; margin:0 auto; padding:26px 16px 60px; }
+  h1 { font-size:26px; margin:0 0 2px; letter-spacing:.5px; }
+  .sub { color:var(--mut); font-size:14px; margin-bottom:20px; }
+  .tabs { display:flex; gap:6px; margin-bottom:18px; }
+  .tab { flex:1; text-align:center; padding:10px; border:1px solid var(--line); border-radius:8px;
+         cursor:pointer; color:var(--mut); font-weight:600; font-size:15px; }
+  .tab.on { background:var(--pri); color:#06231a; border-color:var(--pri); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  .drop { border:2px dashed var(--line); border-radius:12px; padding:36px 20px; text-align:center;
+          color:var(--mut); cursor:pointer; transition:.15s; }
+  .drop.hover { border-color:var(--pri); background:rgba(61,220,151,.05); color:var(--ink); }
+  .drop b { color:var(--pri); }
+  input[type=text] { width:100%; font-family:var(--mono); font-size:14px; padding:11px 13px;
+          background:#0c0e12; border:1px solid var(--line); border-radius:8px; color:var(--ink); }
+  input:focus { outline:none; border-color:var(--pri2); }
+  label { display:block; font-size:13px; color:var(--mut); margin:12px 0 5px; }
+  button { font:inherit; font-size:15px; font-weight:600; border:0; border-radius:8px; padding:12px 22px;
+           background:var(--pri); color:#06231a; cursor:pointer; letter-spacing:.5px; width:100%; margin-top:14px; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .fileinfo { margin-top:14px; font-size:13px; }
+  .fileinfo .row { display:flex; padding:5px 0; border-top:1px solid var(--line); }
+  .fileinfo .k { color:var(--mut); width:90px; flex:none; }
+  .fileinfo .v { font-family:var(--mono); word-break:break-all; }
+  .pk-note { font-size:12px; color:var(--warn); margin-top:6px; }
+  .result { margin-top:16px; padding:14px; border-radius:8px; display:none; font-size:14px; }
+  .result.show { display:block; }
+  .result.ok { background:rgba(61,220,151,.1); border:1px solid rgba(61,220,151,.3); }
+  .result.err { background:rgba(239,83,80,.1); border:1px solid rgba(239,83,80,.3); color:#fca5a5; }
+  .result.info { background:rgba(90,200,250,.08); border:1px solid rgba(90,200,250,.25); }
+  .result .v { font-family:var(--mono); word-break:break-all; font-size:12px; }
+  .status-line { display:flex; gap:14px; font-size:13px; color:var(--mut); margin-bottom:14px; flex-wrap:wrap; }
+  .status-line b { color:var(--ink); font-family:var(--mono); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-right:4px; }
+  .dot.on { background:var(--pri); }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>鏈上存證</h1>
+  <div class="sub">檔案不會上傳，只在本機計算指紋 (SHA-256) 後上鏈 · Chain ID 88860</div>
+
+  <div class="status-line">
+    <span><span class="dot" id="dot"></span><span id="conn">連線中…</span></span>
+    <span>高度 <b id="height">—</b></span>
+  </div>
+
+  <div class="tabs">
+    <div class="tab on" id="tab-submit">存證</div>
+    <div class="tab" id="tab-verify">查驗</div>
+  </div>
+
+  <!-- 存證 -->
+  <div id="panel-submit">
+    <div class="card">
+      <div class="drop" id="drop">拖曳檔案到這裡，或 <b>點擊選擇</b><br><span style="font-size:12px">檔案留在你的電腦，只計算雜湊</span></div>
+      <input type="file" id="file" class="hidden">
+      <div class="fileinfo hidden" id="fileinfo">
+        <div class="row"><span class="k">檔名</span><span class="v" id="f-name"></span></div>
+        <div class="row"><span class="k">大小</span><span class="v" id="f-size"></span></div>
+        <div class="row"><span class="k">SHA-256</span><span class="v" id="f-hash"></span></div>
+      </div>
+
+      <label>備註 (選填，會寫入鏈上，公開可見)</label>
+      <input type="text" id="note" placeholder="可以被公開的訊息">
+
+      <label>存證帳號私鑰 (0x…)</label>
+      <input type="text" id="pk" placeholder="0x… 用於簽名，僅在本機使用">
+      <div class="pk-note">私鑰只在瀏覽器內簽名、不會上傳；公開電腦請勿使用</div>
+
+      <button id="btn-submit" disabled>存證</button>
+      <div class="result" id="submit-result"></div>
+    </div>
+  </div>
+
+  <!-- 查驗 -->
+  <div id="panel-verify" class="hidden">
+    <div class="card">
+      <div class="drop" id="drop2">拖曳檔案到這裡查驗，或 <b>點擊選擇</b></div>
+      <input type="file" id="file2" class="hidden">
+      <div class="fileinfo hidden" id="fileinfo2">
+        <div class="row"><span class="k">SHA-256</span><span class="v" id="f2-hash"></span></div>
+      </div>
+      <label>或直接輸入雜湊</label>
+      <input type="text" id="hash2" placeholder="0x… 64 位雜湊">
+      <button id="btn-verify">查驗</button>
+      <div class="result" id="verify-result"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ====== 設定：填入你的合約地址 (deployed.json 的 contracts) ======
+  var RPC = "https://chain.kmn.tw";
+  var CONTRACTS = {
+    ProofRegistry: "0x96f925fCB2C3D3Be6B3b5e6577E8030b34aC03f2",
+    ProofVerifier: "0xD3c0C957867fdBb43E8907Bbf55C024B7a22E5eA",
+    NotaryPoint:   "0x51fBA29ABFC827cb04e4a128aCb3d186c31Bef79"
+  };
+  // 若存證要走公網，deploy-guard 只擋「部署合約」，一般 submit 交易可通過。
+  // ================================================================
+
+  var ABI = {
+    submit: ["function submit(bytes32 fileHash, string category, string meta)",
+             "function exists(bytes32) view returns (bool)",
+             "function pointCost() view returns (uint256)",
+             "function canAfford(address, uint256) view returns (bool)"],
+    verify: ["function verify(bytes32) view returns (tuple(uint8 status, address submitter, uint64 timestamp, uint64 blockNumber, string category, string meta))"],
+    point:  ["function balanceOf(address) view returns (uint256)"]
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var provider, submitHash = null, submitFile = null, verifyHash = null;
+
+  if (typeof ethers === "undefined") { $("conn").textContent = "ethers 載入失敗"; return; }
+  provider = new ethers.JsonRpcProvider(RPC);
+
+  function health() {
+    provider.getBlockNumber().then(function (n) {
+      $("dot").classList.add("on"); $("conn").textContent = "已連線"; $("height").textContent = "#" + n;
+    }).catch(function () { $("dot").classList.remove("on"); $("conn").textContent = "無法連線"; });
+  }
+  health(); setInterval(health, 8000);
+
+  // SHA-256 (瀏覽器原生，檔案不離開本機)
+  async function hashFile(file) {
+    var buf = await file.arrayBuffer();
+    var digest = await crypto.subtle.digest("SHA-256", buf);
+    return "0x" + [].map.call(new Uint8Array(digest), function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+  }
+  function fmtSize(n) { return n < 1024 ? n + " B" : n < 1048576 ? (n/1024).toFixed(1) + " KB" : (n/1048576).toFixed(2) + " MB"; }
+
+  // ---- 分頁 ----
+  $("tab-submit").addEventListener("click", function () {
+    $("tab-submit").classList.add("on"); $("tab-verify").classList.remove("on");
+    $("panel-submit").classList.remove("hidden"); $("panel-verify").classList.add("hidden");
+  });
+  $("tab-verify").addEventListener("click", function () {
+    $("tab-verify").classList.add("on"); $("tab-submit").classList.remove("on");
+    $("panel-verify").classList.remove("hidden"); $("panel-submit").classList.add("hidden");
+  });
+
+  // ---- 拖放 (存證) ----
+  function setupDrop(dropEl, fileEl, onFile) {
+    dropEl.addEventListener("click", function () { fileEl.click(); });
+    fileEl.addEventListener("change", function () { if (fileEl.files[0]) onFile(fileEl.files[0]); });
+    ["dragover", "dragenter"].forEach(function (e) {
+      dropEl.addEventListener(e, function (ev) { ev.preventDefault(); dropEl.classList.add("hover"); });
+    });
+    ["dragleave", "drop"].forEach(function (e) {
+      dropEl.addEventListener(e, function (ev) { ev.preventDefault(); dropEl.classList.remove("hover"); });
+    });
+    dropEl.addEventListener("drop", function (ev) { if (ev.dataTransfer.files[0]) onFile(ev.dataTransfer.files[0]); });
+  }
+
+  setupDrop($("drop"), $("file"), async function (file) {
+    $("f-name").textContent = file.name;
+    $("f-size").textContent = fmtSize(file.size);
+    $("f-hash").textContent = "計算中…";
+    $("fileinfo").classList.remove("hidden");
+    submitFile = file;
+    submitHash = await hashFile(file);
+    $("f-hash").textContent = submitHash;
+    $("btn-submit").disabled = false;
+  });
+
+  setupDrop($("drop2"), $("file2"), async function (file) {
+    $("f2-hash").textContent = "計算中…";
+    $("fileinfo2").classList.remove("hidden");
+    verifyHash = await hashFile(file);
+    $("f2-hash").textContent = verifyHash;
+    $("hash2").value = verifyHash;
+  });
+
+  // 產生並下載存證憑證 JSON
+  function downloadCertificate(cert) {
+    var blob = new Blob([JSON.stringify(cert, null, 2)], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    // 檔名: 存證憑證-原檔名-區塊號.json
+    var base = (cert.file && cert.file.name ? cert.file.name.replace(/\.[^.]+$/, "") : "proof");
+    a.download = "存證憑證-" + base + "-" + cert.transaction.blockNumber + ".json";
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  // ---- 存證 ----
+  $("btn-submit").addEventListener("click", async function () {
+    var box = $("submit-result");
+    box.className = "result show info"; box.textContent = "處理中…";
+    try {
+      var pk = $("pk").value.trim();
+      if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) throw new Error("私鑰格式不正確");
+      if (!submitHash) throw new Error("請先選擇檔案");
+      var category = "doc"; // 固定類別 (內部用)
+      var note = $("note").value.trim();
+
+      var wallet = new ethers.Wallet(pk, provider);
+
+      // 帳號啟用檢查: 零餘額帳號無法送交易，立即擋下 (不送出以免 pending)
+      var nativeBal = await provider.getBalance(wallet.address);
+      if (nativeBal === 0n) {
+        throw new Error("此帳號尚未啟用 (沒有原生幣)，交易無法送出。請先請管理員為此地址轉入少量原生幣啟用。");
+      }
+
+      var reg = new ethers.Contract(CONTRACTS.ProofRegistry, ABI.submit, wallet);
+      var point = new ethers.Contract(CONTRACTS.NotaryPoint, ABI.point, provider);
+
+      if (await reg.exists(submitHash)) throw new Error("此檔案已存證過 (先到先得，不可重複)");
+      var bal = await point.balanceOf(wallet.address);
+      var afford = await reg.canAfford(wallet.address, 1);
+      if (!afford) throw new Error("點數不足 (目前 " + bal + " 點)");
+
+      // 鏈上 meta (只放公開資訊)
+      var metaObj = { v: 1 };
+      if (submitFile) { metaObj.fn = submitFile.name; metaObj.sz = submitFile.size; }
+      if (note) metaObj.note = note;
+      var meta = JSON.stringify(metaObj);
+
+      box.textContent = "送出交易中…";
+      var tx = await reg.submit(submitHash, category, meta, { gasPrice: 0, type: 0 });
+      var rc = await tx.wait();
+      var balAfter = await point.balanceOf(wallet.address);
+      var blk = await provider.getBlock(rc.blockNumber);
+      var net = await provider.getNetwork();
+
+      // 組存證憑證
+      var cert = {
+        certificate: "KMN 鏈上存證憑證",
+        version: 1,
+        fileHash: submitHash,
+        hashAlgorithm: "SHA-256",
+        file: submitFile ? { name: submitFile.name, size: submitFile.size, sizeText: fmtSize(submitFile.size) } : null,
+        note: note || null,
+        meta: metaObj,
+        notarizedAt: blk ? new Date(Number(blk.timestamp) * 1000).toISOString() : new Date().toISOString(),
+        submitter: wallet.address,
+        chain: { rpc: RPC, chainId: Number(net.chainId), contract: CONTRACTS.ProofRegistry },
+        transaction: {
+          hash: tx.hash,
+          blockNumber: rc.blockNumber,
+          blockHash: rc.blockHash,
+          status: rc.status === 1 ? "success" : "failed",
+          gasUsed: rc.gasUsed.toString()
+        },
+        note_to_holder: "此憑證證明上述 fileHash 對應的檔案已於 notarizedAt 時間存證於鏈上。驗證時以原始檔案重新計算 SHA-256，與 fileHash 比對相符即為有效。原始檔案請自行妥善保管。"
+      };
+
+      box.className = "result show ok";
+      box.innerHTML = "<b>✅ 存證成功，憑證已下載</b><br>區塊 #" + rc.blockNumber +
+        "<br>雜湊 <span class='v'>" + submitHash + "</span>" +
+        "<br>點數 " + bal + " → " + balAfter +
+        "<br><span style='color:var(--mut);font-size:12px'>憑證 JSON 已存至下載資料夾，請妥善保存</span>";
+
+      downloadCertificate(cert);
+    } catch (e) {
+      box.className = "result show err";
+      box.textContent = "❌ " + (e.shortMessage || e.message);
+    }
+  });
+
+  // ---- 查驗 ----
+  $("btn-verify").addEventListener("click", async function () {
+    var box = $("verify-result");
+    var h = $("hash2").value.trim();
+    if (!/^0x[0-9a-fA-F]{64}$/.test(h)) { box.className = "result show err"; box.textContent = "雜湊格式不正確"; return; }
+    box.className = "result show info"; box.textContent = "查驗中…";
+    try {
+      var verifier = new ethers.Contract(CONTRACTS.ProofVerifier, ABI.verify, provider);
+      var r = await verifier.verify(h);
+      var st = Number(r.status);
+      if (st === 0) { box.className = "result show err"; box.textContent = "查無存證 — 此檔案沒有存證紀錄，或內容與存證版本不符"; return; }
+      var label = st === 1 ? "✅ 存證有效" : "⚠️ 已撤銷";
+      box.className = "result show " + (st === 1 ? "ok" : "info");
+      box.innerHTML = "<b>" + label + "</b>" +
+        "<br>存證人 <span class='v'>" + r.submitter + "</span>" +
+        "<br>區塊 #" + r.blockNumber +
+        "<br>時間 " + new Date(Number(r.timestamp) * 1000).toLocaleString("zh-TW", { hour12: false }) +
+        "<br>類別 " + r.category +
+        "<br>meta <span class='v'>" + r.meta + "</span>";
+    } catch (e) {
+      box.className = "result show err";
+      box.textContent = "❌ " + (e.shortMessage || e.message);
+    }
+  });
+})();
+</script>
+</body>
+</html>

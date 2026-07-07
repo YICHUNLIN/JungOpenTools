@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KMN 鏈錢包領取</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+  :root { --bg:#f5f5f4; --card:#fff; --ink:#1c1917; --mut:#78716c; --line:#e7e5e4;
+          --pri:#0f6e56; --warn:#b45309; --danger:#b91c1c; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif;
+         background:var(--bg); color:var(--ink); line-height:1.7; }
+  .wrap { max-width:640px; margin:0 auto; padding:32px 20px 64px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--mut); font-size:14px; margin-bottom:24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:20px; margin-bottom:16px; }
+  .card h2 { font-size:16px; margin:0 0 12px; }
+  button { font:inherit; border:0; border-radius:8px; padding:10px 18px; cursor:pointer; }
+  .btn-pri { background:var(--pri); color:#fff; }
+  .btn-sec { background:#e7e5e4; color:var(--ink); }
+  .btn-danger { background:#fee2e2; color:var(--danger); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  input[type=password] { font:inherit; width:100%; padding:10px 12px; border:1px solid var(--line);
+          border-radius:8px; margin-bottom:8px; }
+  .mono { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; word-break:break-all; }
+  .addr { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 12px; }
+  .mn { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:12px;
+        filter:blur(6px); cursor:pointer; user-select:none; transition:filter .2s; }
+  .mn.show { filter:none; user-select:text; }
+  .warn { background:#fffbeb; border-left:3px solid var(--warn); padding:10px 14px;
+          font-size:13px; color:#78350f; border-radius:0 8px 8px 0; margin:12px 0; }
+  .danger-box { background:#fef2f2; border-left:3px solid var(--danger); padding:10px 14px;
+          font-size:13px; color:#7f1d1d; border-radius:0 8px 8px 0; margin:12px 0; }
+  .hint { color:var(--mut); font-size:13px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .ok { color:var(--pri); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td { padding:4px 8px 4px 0; vertical-align:top; }
+  td:first-child { color:var(--mut); white-space:nowrap; }
+  #offline-tip { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>KMN 鏈錢包領取</h1>
+  <div class="sub">金鑰完全在你的瀏覽器內產生，伺服器不會收到、也不會儲存任何金鑰資料。</div>
+
+  <div class="card">
+    <h2>1｜產生錢包</h2>
+    <div class="row">
+      <button class="btn-pri" id="btn-gen">產生新錢包</button>
+      <span class="hint" id="gen-hint"></span>
+    </div>
+    <div id="result" style="display:none; margin-top:16px;">
+      <div class="hint">錢包地址（可公開，用於接收與識別）</div>
+      <div class="addr mono row" style="justify-content:space-between;">
+        <span id="addr"></span>
+        <button class="btn-sec" id="btn-copy" style="padding:4px 10px;font-size:13px;">複製</button>
+      </div>
+      <div class="hint" style="margin-top:14px;">助記詞（點擊顯示——12 個英文字，等同錢包本體，抄寫於紙本並妥善收藏）</div>
+      <div class="mn mono" id="mnemonic" title="點擊顯示/隱藏"></div>
+    </div>
+  </div>
+
+  <div class="card" id="card-dl" style="display:none;">
+    <h2>2｜下載金鑰檔</h2>
+    <div class="hint" style="margin-bottom:8px;">建議下載「Keystore 加密檔」：以密碼加密的標準格式（V3），可直接匯入 MetaMask 等錢包。</div>
+    <input type="password" id="pw1" placeholder="設定 Keystore 密碼（至少 8 碼）">
+    <input type="password" id="pw2" placeholder="再次輸入密碼">
+    <div class="row">
+      <button class="btn-pri" id="btn-ks">下載 Keystore 加密檔</button>
+      <span class="hint" id="ks-hint"></span>
+    </div>
+    <div class="danger-box">
+      進階：也可下載未加密的私鑰純文字檔。<b>任何取得此檔的人即可完全控制此錢包</b>，僅建議存放於離線且加密的媒體。
+      <div style="margin-top:8px;"><button class="btn-danger" id="btn-pk">我了解風險，下載私鑰明文檔</button></div>
+    </div>
+  </div>
+
+  <div class="card" id="card-done" style="display:none;">
+    <h2>3｜完成確認</h2>
+    <ul style="margin:0; padding-left:20px; font-size:14px;">
+      <li id="ck-ks">⬜ 已下載 Keystore 檔並記住密碼</li>
+      <li>⬜ 已抄寫助記詞於紙本（勿截圖、勿存雲端筆記）</li>
+      <li>⬜ 已將錢包地址提供給管理員（開通存證權限／發放代幣）</li>
+    </ul>
+    <div class="warn">本頁不保存任何資料。關閉或重新整理後，未下載的金鑰即永久消失，無人能夠找回。</div>
+  </div>
+
+  <div class="card">
+    <h2>附｜加入 MetaMask 網路參數</h2>
+    <table>
+      <tr><td>網路名稱</td><td>KMN Chain</td></tr>
+      <tr><td>RPC URL</td><td class="mono">https://chain.kmn.tw</td></tr>
+      <tr><td>Chain ID</td><td class="mono">88860</td></tr>
+      <tr><td>貨幣符號</td><td class="mono">KMN</td></tr>
+    </table>
+    <div class="hint" style="margin-top:8px;">匯入方式：MetaMask →「新增帳戶」→「匯入帳戶」→ 選擇 JSON 檔（Keystore）或貼上私鑰。</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var wallet = null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  if (typeof ethers === "undefined") {
+    $("gen-hint").textContent = "⚠️ ethers 函式庫載入失敗，請檢查網路後重新整理";
+    $("btn-gen").disabled = true;
+    return;
+  }
+
+  $("btn-gen").addEventListener("click", function () {
+    if (wallet && !confirm("已產生一組錢包。重新產生會捨棄目前這組（若尚未下載將無法找回），確定？")) return;
+    wallet = ethers.Wallet.createRandom();
+    $("addr").textContent = wallet.address;
+    $("mnemonic").textContent = wallet.mnemonic.phrase;
+    $("mnemonic").classList.remove("show");
+    $("result").style.display = "block";
+    $("card-dl").style.display = "block";
+    $("card-done").style.display = "block";
+    $("gen-hint").textContent = "已於本機產生 ✓";
+  });
+
+  $("mnemonic").addEventListener("click", function () { this.classList.toggle("show"); });
+
+  $("btn-copy").addEventListener("click", function () {
+    navigator.clipboard.writeText(wallet.address).then(function () {
+      $("btn-copy").textContent = "已複製 ✓";
+      setTimeout(function () { $("btn-copy").textContent = "複製"; }, 1500);
+    });
+  });
+
+  function download(filename, text) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "application/octet-stream" }));
+    a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  $("btn-ks").addEventListener("click", function () {
+    var p1 = $("pw1").value, p2 = $("pw2").value;
+    if (p1.length < 8) { $("ks-hint").textContent = "密碼至少 8 碼"; return; }
+    if (p1 !== p2) { $("ks-hint").textContent = "兩次密碼不一致"; return; }
+    $("btn-ks").disabled = true;
+    $("ks-hint").textContent = "加密中（scrypt 需數秒）…";
+    setTimeout(function () {
+      wallet.encrypt(p1).then(function (json) {
+        var short = wallet.address.slice(2, 10).toLowerCase();
+        download("kmn-keystore-" + short + ".json", json);
+        $("ks-hint").innerHTML = "<span class='ok'>已下載 ✓ 請記住這組密碼</span>";
+        $("ck-ks").textContent = "✅ 已下載 Keystore 檔並記住密碼";
+        $("btn-ks").disabled = false;
+      }).catch(function (e) {
+        $("ks-hint").textContent = "加密失敗: " + e.message;
+        $("btn-ks").disabled = false;
+      });
+    }, 50);
+  });
+
+  $("btn-pk").addEventListener("click", function () {
+    if (!confirm("私鑰明文檔一旦外流，錢包內所有權限與資產將被他人完全掌控。\n確定要下載未加密私鑰？")) return;
+    var short = wallet.address.slice(2, 10).toLowerCase();
+    download("kmn-privatekey-" + short + ".txt",
+      "KMN Chain (chainId 88860) 錢包私鑰 — 機密，請離線保存\n" +
+      "地址: " + wallet.address + "\n" +
+      "私鑰: " + wallet.privateKey + "\n" +
+      "助記詞: " + wallet.mnemonic.phrase + "\n");
+  });
+})();
+</script>
+</body>
+</html>

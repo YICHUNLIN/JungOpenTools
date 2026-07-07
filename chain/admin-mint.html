@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KMN 點數發放（管理）</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --ink:#e5e7eb; --mut:#8b93a1;
+          --pri:#3ddc97; --pri2:#0f6e56; --warn:#f5a623; --danger:#ef5350; --in:#5ac8fa;
+          --mono:ui-monospace,Menlo,Consolas,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Barlow Condensed",system-ui,"Noto Sans TC",sans-serif;
+         background:var(--bg); color:var(--ink); line-height:1.55; }
+  .wrap { max-width:600px; margin:0 auto; padding:26px 16px 60px; }
+  h1 { font-size:26px; margin:0 0 2px; letter-spacing:.5px; }
+  .sub { color:var(--mut); font-size:14px; margin-bottom:18px; }
+  .admin-tag { display:inline-block; background:rgba(245,166,35,.15); color:var(--warn);
+               font-size:12px; font-weight:700; padding:2px 10px; border-radius:5px; margin-bottom:18px; }
+  .status-line { display:flex; gap:14px; font-size:13px; color:var(--mut); margin-bottom:16px; flex-wrap:wrap; }
+  .status-line b { color:var(--ink); font-family:var(--mono); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-right:4px; }
+  .dot.on { background:var(--pri); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--mut); margin:12px 0 5px; }
+  label:first-child { margin-top:0; }
+  input { width:100%; font-family:var(--mono); font-size:14px; padding:11px 13px;
+          background:#0c0e12; border:1px solid var(--line); border-radius:8px; color:var(--ink); }
+  input:focus { outline:none; border-color:var(--pri2); }
+  .pk-note { font-size:12px; color:var(--warn); margin-top:5px; }
+  button { font:inherit; font-size:15px; font-weight:600; border:0; border-radius:8px; padding:12px 22px;
+           background:var(--pri); color:#06231a; cursor:pointer; letter-spacing:.5px; width:100%; margin-top:16px; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .minter-info { font-size:13px; color:var(--mut); margin-top:8px; padding:8px 10px;
+                 background:#0c0e12; border-radius:6px; display:none; }
+  .minter-info.show { display:block; }
+  .minter-info .ok { color:var(--pri); } .minter-info .no { color:var(--danger); }
+  .opt { display:flex; align-items:center; gap:8px; margin-top:14px; font-size:14px; color:var(--mut); }
+  .opt input[type=checkbox] { width:auto; }
+  .result { margin-top:16px; padding:14px; border-radius:8px; display:none; font-size:14px; }
+  .result.show { display:block; }
+  .result.ok { background:rgba(61,220,151,.1); border:1px solid rgba(61,220,151,.3); }
+  .result.err { background:rgba(239,83,80,.1); border:1px solid rgba(239,83,80,.3); color:#fca5a5; }
+  .result.info { background:rgba(90,200,250,.08); border:1px solid rgba(90,200,250,.25); }
+  .result .v { font-family:var(--mono); word-break:break-all; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>點數發放</h1>
+  <span class="admin-tag">管理工具 · 需發點帳號私鑰</span>
+  <div class="sub">用發點帳號 (minter) 發放存證點數給使用者</div>
+
+  <div class="status-line">
+    <span><span class="dot" id="dot"></span><span id="conn">連線中…</span></span>
+    <span>高度 <b id="height">—</b></span>
+  </div>
+
+  <div class="card">
+    <label>發點帳號私鑰 (minter)</label>
+    <input type="password" id="pk" placeholder="0x… 簽名用，僅在本機">
+    <div class="pk-note">私鑰只在瀏覽器內簽名，不會上傳</div>
+    <div class="minter-info" id="minter-info"></div>
+
+    <label>收點地址 (使用者)</label>
+    <input type="text" id="to" placeholder="0x…" spellcheck="false">
+
+    <label>發放點數</label>
+    <input type="text" id="amount" placeholder="例如 100" inputmode="numeric">
+
+    <div class="opt">
+      <input type="checkbox" id="activate">
+      <label for="activate" style="margin:0;color:var(--ink);">同時轉少量原生幣啟用對方帳號（若對方帳號從未收過原生幣，存證前需先啟用）</label>
+    </div>
+
+    <button id="btn" disabled>發放點數</button>
+    <div class="result" id="result"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ====== 設定：填入合約地址 ======
+  var RPC = "https://chain.kmn.tw";
+  var CONTRACTS = {
+    NotaryPoint: "0x51fBA29ABFC827cb04e4a128aCb3d186c31Bef79"
+  };
+  var ACTIVATE_AMOUNT = "0.1"; // 勾選啟用時轉的原生幣數量 (夠做上萬次交易)
+  // ================================
+
+  var ABI = {
+    pt: ["function balanceOf(address) view returns (uint256)",
+         "function minters(address) view returns (bool)",
+         "function mint(address to, uint256 amount)"]
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var provider;
+
+  if (typeof ethers === "undefined") { $("conn").textContent = "ethers 載入失敗"; return; }
+  provider = new ethers.JsonRpcProvider(RPC);
+
+  function health() {
+    provider.getBlockNumber().then(function (n) {
+      $("dot").classList.add("on"); $("conn").textContent = "已連線"; $("height").textContent = "#" + n;
+    }).catch(function () { $("dot").classList.remove("on"); $("conn").textContent = "無法連線"; });
+  }
+  health(); setInterval(health, 8000);
+
+  // 輸入私鑰後檢查是不是 minter
+  var checkTimer;
+  $("pk").addEventListener("input", function () {
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(checkMinter, 400);
+  });
+  async function checkMinter() {
+    var pk = $("pk").value.trim();
+    var info = $("minter-info");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) { info.className = "minter-info"; $("btn").disabled = true; return; }
+    try {
+      var w = new ethers.Wallet(pk);
+      var pt = new ethers.Contract(CONTRACTS.NotaryPoint, ABI.pt, provider);
+      var isM = await pt.minters(w.address);
+      var nativeBal = await provider.getBalance(w.address);
+      info.className = "minter-info show";
+      info.innerHTML = "帳號 <span class='v'>" + w.address + "</span><br>" +
+        "發點權限: " + (isM ? "<span class='ok'>是 minter ✓</span>" : "<span class='no'>不是 minter ✗（無法發點）</span>") +
+        " ｜ 原生幣: " + ethers.formatEther(nativeBal);
+      $("btn").disabled = !isM;
+      if (!isM) return;
+      if (nativeBal === 0n) {
+        info.innerHTML += "<br><span class='no'>⚠️ 此發點帳號自己也沒有原生幣，無法送交易，請先請營運帳號轉入。</span>";
+        $("btn").disabled = true;
+      }
+    } catch (e) {
+      info.className = "minter-info show";
+      info.innerHTML = "<span class='no'>檢查失敗：" + (e.shortMessage || e.message) + "</span>";
+      $("btn").disabled = true;
+    }
+  }
+
+  $("btn").addEventListener("click", async function () {
+    var box = $("result");
+    box.className = "result show info"; box.textContent = "處理中…";
+    try {
+      var pk = $("pk").value.trim();
+      var to = $("to").value.trim();
+      var amtStr = $("amount").value.trim();
+      if (!ethers.isAddress(to)) throw new Error("收點地址格式錯誤");
+      if (!/^\d+$/.test(amtStr) || amtStr === "0") throw new Error("點數需為正整數");
+
+      var wallet = new ethers.Wallet(pk, provider);
+      var pt = new ethers.Contract(CONTRACTS.NotaryPoint, ABI.pt, wallet);
+
+      var before = await pt.balanceOf(to);
+
+      // 若勾選啟用，先轉少量原生幣 (對方沒有原生幣才轉)
+      var activateMsg = "";
+      if ($("activate").checked) {
+        var toBal = await provider.getBalance(to);
+        if (toBal === 0n) {
+          box.textContent = "轉原生幣啟用對方帳號中…";
+          var t1 = await wallet.sendTransaction({ to: to, value: ethers.parseEther(ACTIVATE_AMOUNT), gasPrice: 0, type: 0 });
+          await t1.wait();
+          activateMsg = "<br>已轉 " + ACTIVATE_AMOUNT + " 原生幣啟用對方帳號";
+        } else {
+          activateMsg = "<br>對方已有原生幣，略過啟用";
+        }
+      }
+
+      box.textContent = "發放點數中…";
+      var tx = await pt.mint(to, BigInt(amtStr), { gasPrice: 0, type: 0 });
+      var rc = await tx.wait();
+      var after = await pt.balanceOf(to);
+
+      box.className = "result show ok";
+      box.innerHTML = "<b>✅ 發放成功</b>" +
+        "<br>對方點數 " + before + " → " + after +
+        activateMsg +
+        "<br>交易 <span class='v'>" + tx.hash + "</span>";
+    } catch (e) {
+      var msg = e.shortMessage || e.message;
+      if (msg.indexOf("not minter") >= 0) msg = "此帳號不是授權的發點帳號 (minter)";
+      box.className = "result show err";
+      box.textContent = "❌ " + msg;
+    }
+  });
+})();
+</script>
+</body>
+</html>

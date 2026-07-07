@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KMN 鏈上存證系統</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --ink:#e5e7eb; --mut:#8b93a1;
+          --pri:#3ddc97; --pri2:#0f6e56; --warn:#f5a623; --danger:#ef5350; --in:#5ac8fa;
+          --mono:ui-monospace,Menlo,Consolas,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Barlow Condensed",system-ui,"Noto Sans TC",sans-serif;
+         background:var(--bg); color:var(--ink); line-height:1.5; }
+  .wrap { max-width:900px; margin:0 auto; padding:36px 18px 70px; }
+  .head { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:4px; }
+  h1 { font-size:32px; margin:0; letter-spacing:.5px; }
+  .chain-id { font-family:var(--mono); font-size:13px; color:var(--mut); }
+  .sub { color:var(--mut); font-size:15px; margin-bottom:22px; }
+  .status-line { display:flex; gap:16px; font-size:13px; color:var(--mut); margin-bottom:28px; flex-wrap:wrap;
+                 background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 16px; }
+  .status-line b { color:var(--ink); font-family:var(--mono); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--danger); margin-right:5px; vertical-align:middle; }
+  .dot.on { background:var(--pri); }
+  .section-title { font-size:14px; color:var(--mut); text-transform:uppercase; letter-spacing:1px;
+                   font-weight:700; margin:0 0 14px; display:flex; align-items:center; gap:10px; }
+  .section-title .line { flex:1; height:1px; background:var(--line); }
+  .admin-badge { font-size:11px; background:rgba(245,166,35,.15); color:var(--warn); padding:2px 9px; border-radius:5px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:14px; margin-bottom:34px; }
+  .tile { display:block; text-decoration:none; background:var(--card); border:1px solid var(--line);
+          border-radius:14px; padding:20px; transition:.15s; position:relative; overflow:hidden; }
+  .tile:hover { border-color:var(--pri2); transform:translateY(-2px); }
+  .tile .icon { width:38px; height:38px; margin-bottom:14px; display:flex; align-items:center; justify-content:center;
+                border-radius:10px; background:rgba(61,220,151,.1); }
+  .tile .icon svg { width:22px; height:22px; stroke:var(--pri); fill:none; stroke-width:1.8; }
+  .tile.admin .icon { background:rgba(245,166,35,.1); }
+  .tile.admin .icon svg { stroke:var(--warn); }
+  .tile h3 { font-size:18px; margin:0 0 5px; color:var(--ink); }
+  .tile p { font-size:13px; color:var(--mut); margin:0; line-height:1.5; }
+  .tile .arrow { position:absolute; top:20px; right:18px; color:var(--mut); font-size:18px; transition:.15s; }
+  .tile:hover .arrow { color:var(--pri); transform:translateX(3px); }
+  .admin-note { font-size:12px; color:var(--warn); margin:-6px 0 14px; }
+  .foot { color:var(--mut); font-size:12px; text-align:center; margin-top:20px; font-family:var(--mono); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>KMN 鏈上存證系統</h1>
+    <span class="chain-id">Chain ID 88860</span>
+  </div>
+  <div class="sub">檔案指紋上鏈存證，時間戳不可竄改。原始檔案不上傳、不儲存。</div>
+
+  <div class="status-line">
+    <span><span class="dot" id="dot"></span><span id="conn">連線中…</span></span>
+    <span>區塊高度 <b id="height">—</b></span>
+    <span>RPC <b>chain.kmn.tw</b></span>
+  </div>
+
+  <!-- 管理區 -->
+  <div class="section-title">管理工具 <span class="admin-badge">限管理員</span><span class="line"></span></div>
+  <div class="admin-note">⚠️ 以下工具需要管理帳號私鑰，請勿公開分享此區網址。</div>
+  <div class="grid">
+    <a class="tile admin" href="admin-mint.html">
+      <div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg></div>
+      <span class="arrow">→</span>
+      <h3>發放點數</h3>
+      <p>用發點帳號發放存證點數給使用者，可同時轉原生幣啟用對方帳號。</p>
+    </a>
+    <a class="tile admin" href="admin-transfer.html">
+      <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 12h16M14 6l6 6-6 6"/></svg></div>
+      <span class="arrow">→</span>
+      <h3>原生幣轉帳</h3>
+      <p>轉帳原生幣（用於啟用帳號）。營運帳號 → 發點帳號 → 使用者。</p>
+    </a>
+    <a class="tile admin" href="admin-stats.html">
+      <div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="12" width="4" height="8"/><rect x="10" y="7" width="4" height="13"/><rect x="17" y="3" width="4" height="17"/></svg></div>
+      <span class="arrow">→</span>
+      <h3>點數統計</h3>
+      <p>全鏈統計：發放/消耗總量，各帳號取得與消耗明細。</p>
+    </a>
+  </div>
+
+  <div class="foot">KMN Private Chain · Hyperledger Besu QBFT · gas-free</div>
+</div>
+
+<script>
+(function () {
+  var RPC = "https://chain.kmn.tw";
+  var $ = function (id) { return document.getElementById(id); };
+  if (typeof ethers === "undefined") { $("conn").textContent = "ethers 載入失敗"; return; }
+  var provider = new ethers.JsonRpcProvider(RPC);
+  function health() {
+    provider.getBlockNumber().then(function (n) {
+      $("dot").classList.add("on"); $("conn").textContent = "已連線"; $("height").textContent = "#" + n;
+    }).catch(function () { $("dot").classList.remove("on"); $("conn").textContent = "無法連線"; });
+  }
+  health(); setInterval(health, 8000);
+})();
+</script>
+</body>
+</html>
